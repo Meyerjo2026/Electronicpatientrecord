@@ -1,0 +1,167 @@
+#!/usr/bin/env node
+/**
+ * Generates packages/nemsis/src/generated-data.ts from the vendored NEMSIS v3
+ * XSD schemas in ./xsd. Run via: node nemsis/generate.mjs
+ */
+import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
+const XSD_DIR = join(ROOT, 'nemsis', 'xsd');
+const OUT = join(ROOT, 'packages', 'nemsis', 'src', 'generated-data.ts');
+
+const SECTIONS = {
+  ePatient: 'Patient Demographics',
+  eTimes: 'Times',
+  eSituation: 'Situation',
+  eScene: 'Scene',
+  eInjury: 'Injury',
+  eDisposition: 'Disposition',
+  eNarrative: 'Narrative',
+};
+
+const GLOBAL_TYPES = ['commonTypes_v3.xsd'];
+
+function parseEnums(file) {
+  const s = readFileSync(join(XSD_DIR, file), 'utf8');
+  const out = new Map();
+  const re = /<xs:simpleType name="([^"]+)">([\s\S]*?)<\/xs:simpleType>/g;
+  let m;
+  while ((m = re.exec(s))) {
+    const [, name, body] = m;
+    const vals = [];
+    const ere = /<xs:enumeration value="([^"]+)"[^>]*>([\s\S]*?)<\/xs:enumeration>|<xs:enumeration value="([^"]+)"\s*\/>/g;
+    let e;
+    while ((e = ere.exec(body))) {
+      const code = e[1] ?? e[3];
+      let label = '';
+      if (e[2]) {
+        const docMatch = e[2].match(/<xs:documentation>\s*([^<\n]+)/);
+        label = docMatch?.[1]?.trim() ?? '';
+      }
+      vals.push({ code, label });
+    }
+    if (vals.length) out.set(name, vals);
+  }
+  return out;
+}
+
+function parseElements(file) {
+  const s = readFileSync(join(XSD_DIR, file), 'utf8');
+  const out = [];
+  // Split by element - more robust: match from <xs:element to next <xs:element or end
+  const re = /<xs:element name="(e[A-Za-z0-9_.]+)"([^>]*)>([\s\S]*?)(?=\s*<xs:element|\s*<\/xs:schema>)/g;
+  let m;
+  while ((m = re.exec(s))) {
+    const code = m[1];
+    const attrs = m[2];
+    const body = m[3];
+    const typeAttr = attrs.match(/type="([^"]+)"/)?.[1];
+    const num = body.match(/<number>([^<]+)<\/number>/);
+    const name = body.match(/<name>([^<]+)<\/name>/);
+    const def = body.match(/<definition>([^<]+)<\/definition>/);
+    const usage = body.match(/<usage>([^<]+)<\/usage>/);
+    const idAttr = attrs.match(/id="([^"]+)"/)?.[1];
+    
+    // Find extension base in complexType
+    let extBase = null;
+    const extMatch = body.match(/<xs:extension base="([^"]+)"/);
+    if (extMatch) extBase = extMatch[1];
+    
+    // Find inline simpleType enums
+    let inlineEnums = [];
+    const ire = /<xs:simpleType>([\s\S]*?)<\/xs:simpleType>/g;
+    let im;
+    while ((im = ire.exec(body))) {
+      const ere2 = /<xs:enumeration value="([^"]+)"[^>]*>([\s\S]*?)<\/xs:enumeration>|<xs:enumeration value="([^"]+)"\s*\/>/g;
+      let e2;
+      while ((e2 = ere2.exec(im[1]))) {
+        const c = e2[1] ?? e2[3];
+        let l = '';
+        if (e2[2]) {
+          const docMatch = e2[2].match(/<xs:documentation>\s*([^<\n]+)/);
+          l = docMatch?.[1]?.trim() ?? '';
+        }
+        inlineEnums.push({ code: c, label: l });
+      }
+    }
+    
+    const elem = {
+      code: (num?.[1]?.trim() ?? code).replace(/\s*\(DEPRECATED\)$/i, ''),
+      id: idAttr ?? code,
+      name: name?.[1]?.trim() ?? '',
+      definition: (def?.[1]?.trim() ?? '').replace(/\s+/g, ' '),
+      usage: usage?.[1]?.trim() ?? '',
+      type: typeAttr ?? '',
+      extBase,
+      inlineEnums,
+      deprecated: /\(DEPRECATED\)/i.test(code + (name?.[1] ?? '')),
+    };
+    out.push(elem);
+  }
+  return out;
+}
+
+const globalEnums = new Map();
+for (const f of GLOBAL_TYPES) {
+  for (const [k, v] of parseEnums(f)) globalEnums.set(k, v);
+}
+
+const sections = {};
+const valueSets = new Map();
+
+for (const [file, sectionName] of Object.entries(SECTIONS)) {
+  const elements = parseElements(`${file}_v3.xsd`);
+  const fileEnums = parseEnums(`${file}_v3.xsd`);
+  const resolved = [];
+  for (const el of elements) {
+    let vsId = null;
+    if (el.inlineEnums.length) {
+      vsId = `${el.code}_values`;
+      if (!valueSets.has(vsId)) valueSets.set(vsId, { id: vsId, name: `${el.name} values`, values: el.inlineEnums });
+    } else {
+      // Try extBase first, then type
+      const typeKey = el.extBase ?? el.type;
+      if (typeKey) {
+        const src = fileEnums.get(typeKey) ?? globalEnums.get(typeKey);
+        if (src && src.length) {
+          vsId = typeKey;
+          if (!valueSets.has(vsId)) valueSets.set(vsId, { id: vsId, name: typeKey, values: src });
+        }
+      }
+    }
+    resolved.push({ 
+      code: el.code, 
+      id: el.id, 
+      name: el.name, 
+      definition: el.definition, 
+      usage: el.usage, 
+      valueSetId: vsId, 
+      deprecated: el.deprecated, 
+      hasValueSet: !!vsId 
+    });
+  }
+  sections[file] = { id: file, name: sectionName, elements: resolved };
+}
+
+const vsArray = [...valueSets.values()];
+
+mkdirSync(dirname(OUT), { recursive: true });
+const banner = `/* eslint-disable */
+// AUTO-GENERATED by nemsis/generate.mjs from NEMSIS v3 XSD schemas (./xsd).
+// Do not edit by hand; regenerate with: node nemsis/generate.mjs
+`;
+writeFileSync(OUT, `${banner}
+export interface GeneratedValueSetValue { code: string; label: string; }
+export interface GeneratedValueSet { id: string; name: string; values: GeneratedValueSetValue[]; }
+export interface GeneratedElement { code: string; id: string; name: string; definition: string; usage: string; valueSetId: string | null; deprecated: boolean; hasValueSet: boolean; }
+export interface GeneratedSection { id: string; name: string; elements: GeneratedElement[]; }
+
+export const NEMSIS_SECTIONS: Record<string, GeneratedSection> = ${JSON.stringify(sections, null, 2)};
+
+export const NEMSIS_VALUE_SETS: GeneratedValueSet[] = ${JSON.stringify(vsArray, null, 2)};
+`);
+console.log(`wrote ${OUT}`);
+console.log(`sections: ${Object.keys(sections).length}; value sets: ${valueSets.size}`);
+console.log('value set ids:', [...valueSets.keys()].join(', '));

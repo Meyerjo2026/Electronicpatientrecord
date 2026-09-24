@@ -11,6 +11,7 @@ import { VitalSignsScreen } from '../screens/VitalSignsScreen';
 import { InterventionsScreen } from '../screens/InterventionsScreen';
 import { HandoffScreen } from '../screens/HandoffScreen';
 import { SettingsScreen } from '../screens/SettingsScreen';
+import { PatientReportScreen } from '../screens/PatientReportScreen';
 import { colors } from '../theme';
 
 const Stack = createNativeStackNavigator();
@@ -103,6 +104,7 @@ const MainStack: React.FC = () => {
       <Stack.Screen name="Interventions" component={InterventionsScreen} />
       <Stack.Screen name="Handoff" component={HandoffScreen} />
       <Stack.Screen name="Settings" component={SettingsScreen} />
+      <Stack.Screen name="PatientReport" component={PatientReportScreen} />
     </Stack.Navigator>
   );
 };
