@@ -31,13 +31,13 @@ class PatientController extends Controller
             $query->whereJsonContains('identifier', [['value' => $request->identifier]]);
         }
         if ($request->has('name')) {
-            $query->whereRaw("JSON_SEARCH(name, 'one', ?) IS NOT NULL", [$request->name]);
+            $this->applyNameSearch($query, $request->name);
         }
         if ($request->has('family')) {
-            $query->whereRaw("JSON_SEARCH(name, 'one', ?) IS NOT NULL", [$request->family]);
+            $this->applyNameSearch($query, $request->family);
         }
         if ($request->has('given')) {
-            $query->whereRaw("JSON_SEARCH(name, 'one', ?) IS NOT NULL", [$request->given]);
+            $this->applyNameSearch($query, $request->given);
         }
         if ($request->has('gender')) {
             $query->where('gender', $request->gender);
@@ -145,8 +145,8 @@ class PatientController extends Controller
         
         return response()->json($this->toFhirPatient($patient), 200, [
             'Content-Type' => 'application/fhir+json',
-            'ETag' => 'W/"' . $patient->meta['versionId'] . '"',
-            'Last-Modified' => $patient->meta['lastUpdated'],
+            'ETag' => 'W/"' . ($patient->meta['versionId'] ?? '1') . '"',
+            'Last-Modified' => $patient->meta['lastUpdated'] ?? now()->toISOString(),
         ]);
     }
 
@@ -263,5 +263,24 @@ class PatientController extends Controller
         
         $parts = explode('/', $reference['reference']);
         return end($parts);
+    }
+
+    /**
+     * Portable JSON substring search across MySQL (JSON_SEARCH) and SQLite (LIKE).
+     */
+    protected function applyNameSearch($query, string $term): void
+    {
+        if ($this->connectionDriver() === 'mysql') {
+            $query->whereRaw("JSON_SEARCH(name, 'one', ?) IS NOT NULL", [$term]);
+            return;
+        }
+
+        $escaped = addcslashes($term, '%_\\');
+        $query->whereRaw("name LIKE ? ESCAPE '\\'", ['%' . $escaped . '%']);
+    }
+
+    protected function connectionDriver(): string
+    {
+        return \Illuminate\Support\Facades\DB::connection()->getDriverName();
     }
 }

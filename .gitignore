@@ -1,3 +1,7 @@
 node_modules/
 /api/vendor/
 /api/database/database.sqlite
+
+# Build output
+packages/*/dist/
+apps/*/dist/

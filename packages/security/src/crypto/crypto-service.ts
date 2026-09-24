@@ -67,19 +67,11 @@ export class CryptoService {
 
     let encrypted: CryptoJS.lib.CipherParams;
     
-    if (this.config.algorithm === 'AES-256-GCM') {
-      encrypted = CryptoJS.AES.encrypt(plaintext, key, {
-        iv,
-        mode: CryptoJS.mode.GCM,
-        padding: CryptoJS.pad.NoPadding,
-      });
-    } else {
-      encrypted = CryptoJS.AES.encrypt(plaintext, key, {
-        iv,
-        mode: CryptoJS.mode.CBC,
-        padding: CryptoJS.pad.Pkcs7,
-      });
-    }
+    encrypted = CryptoJS.AES.encrypt(plaintext, key, {
+      iv,
+      mode: CryptoJS.mode.CBC,
+      padding: CryptoJS.pad.Pkcs7,
+    });
 
     return {
       ciphertext: encrypted.ciphertext.toString(CryptoJS.enc.Base64),
@@ -108,21 +100,7 @@ export class CryptoService {
 
     let decrypted: string;
     
-    if (encryptedData.algorithm === 'AES-256-GCM') {
-      const tag = encryptedData.tag ? CryptoJS.enc.Base64.parse(encryptedData.tag) : null;
-      const cipherParams = CryptoJS.lib.CipherParams.create({
-        ciphertext,
-        iv,
-        salt,
-        ...(tag && { tag }),
-      });
-      
-      decrypted = CryptoJS.AES.decrypt(cipherParams, key, {
-        iv,
-        mode: CryptoJS.mode.GCM,
-        padding: CryptoJS.pad.NoPadding,
-      }).toString(CryptoJS.enc.Utf8);
-    } else {
+    {
       const cipherParams = CryptoJS.lib.CipherParams.create({
         ciphertext,
         iv,
@@ -182,20 +160,20 @@ export class CryptoService {
   // Key wrapping for key escrow/recovery
   wrapKey(key: CryptoJS.lib.WordArray): string {
     if (!this.masterKey) throw new Error('CryptoService not initialized');
-    const encrypted = CryptoJS.AES.encrypt(
+    // Use the master key hex as a passphrase so crypto-js generates its own
+    // self-contained OpenSSL salt + IV and no manual IV bookkeeping is needed.
+    return CryptoJS.AES.encrypt(
       key.toString(CryptoJS.enc.Hex),
-      this.masterKey,
-      { mode: CryptoJS.mode.GCM, padding: CryptoJS.pad.NoPadding }
-    );
-    return encrypted.toString();
+      this.masterKey.toString(CryptoJS.enc.Hex)
+    ).toString();
   }
 
   unwrapKey(wrappedKey: string): CryptoJS.lib.WordArray {
     if (!this.masterKey) throw new Error('CryptoService not initialized');
-    const decrypted = CryptoJS.AES.decrypt(wrappedKey, this.masterKey, {
-      mode: CryptoJS.mode.GCM,
-      padding: CryptoJS.pad.NoPadding
-    });
+    const decrypted = CryptoJS.AES.decrypt(
+      wrappedKey,
+      this.masterKey.toString(CryptoJS.enc.Hex)
+    );
     return CryptoJS.enc.Hex.parse(decrypted.toString(CryptoJS.enc.Utf8));
   }
 

@@ -43,16 +43,18 @@ export class AuditService {
 
   constructor(config: Partial<AuditConfig> = {}) {
     this.config = AuditConfigSchema.parse(config);
-    this.startFlushTimer();
   }
 
-  private startFlushTimer(): void {
+  private ensureFlushTimer(): void {
+    if (this.flushTimer) return;
     this.flushTimer = setInterval(() => {
       this.flush();
     }, this.config.flushInterval);
   }
 
-  async logEvent(event: Omit<AuditEventCreate, 'id' | 'meta' | 'resourceType'>): Promise<AuditEvent> {
+  async logEvent(event: Omit<AuditEventCreate, 'id' | 'meta' | 'resourceType' | 'recorded'>): Promise<AuditEvent> {
+    this.ensureFlushTimer();
+
     const auditEvent: AuditEvent = {
       ...event,
       id: ulid(),
@@ -62,7 +64,7 @@ export class AuditService {
         lastUpdated: new Date().toISOString(),
         source: this.config.serviceName,
       },
-      recorded: event.recorded || new Date().toISOString(),
+      recorded: new Date().toISOString(),
     };
 
     // Add integrity hash if enabled
@@ -159,13 +161,7 @@ export class AuditService {
             display: 'System Object',
           }],
         },
-        role: {
-          coding: [{
-            system: 'http://terminology.hl7.org/CodeSystem/object-role',
-            code: '4',
-            display: 'Domain Resource',
-          }],
-        },
+        role: '4',
       }],
       extension: details ? [{
         url: 'http://prehospital-epr.org/fhir/StructureDefinition/audit-details',
@@ -220,7 +216,7 @@ export class AuditService {
             display: 'Application Server',
           }],
         }],
-      }],
+      },
       entity: [
         {
           what: { reference: `Encounter/${encounterId}` },
@@ -231,13 +227,7 @@ export class AuditService {
               display: 'System Object',
             }],
           },
-          role: {
-            coding: [{
-              system: 'http://terminology.hl7.org/CodeSystem/object-role',
-              code: '4',
-              display: 'Domain Resource',
-            }],
-          },
+          role: '4',
         },
       ],
       extension: [{
@@ -284,7 +274,7 @@ export class AuditService {
             display: 'Application Server',
           }],
         }],
-      }],
+      },
       entity: [],
       extension: [{
         url: 'http://prehospital-epr.org/fhir/StructureDefinition/audit-security-details',
@@ -326,7 +316,7 @@ export class AuditService {
             display: 'Application Server',
           }],
         }],
-      }],
+      },
       entity: [],
       extension: [{
         url: 'http://prehospital-epr.org/fhir/StructureDefinition/audit-system-details',

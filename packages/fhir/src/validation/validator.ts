@@ -10,11 +10,11 @@ import {
   Consent,
   VitalSignsSet
 } from '@prehospital-epr/core';
-import { FHIRResource, validateResource } from './bundle';
+import { FHIRResource, validateResource } from '../resources/bundle';
 
 export const FHIRValidationResultSchema = z.object({
   success: z.boolean(),
-  resource: FHIRResource.optional(),
+  resource: z.any().optional(),
   errors: z.array(z.object({
     path: z.array(z.union([z.string(), z.number()])),
     message: z.string(),
@@ -179,32 +179,32 @@ export const allSearchParams: Record<string, FHIRSearchParam[]> = {
   Observation: observationSearchParams,
   MedicationAdministration: [
     ...commonSearchParams,
-    { name: 'patient', type: 'reference', path: 'subject', target: ['Patient'] },
-    { name: 'encounter', type: 'reference', path: 'context', target: ['Encounter'] },
-    { name: 'code', type: 'token', path: 'medicationCodeableConcept' },
-    { name: 'date', type: 'date', path: 'effective[x]' },
-    { name: 'performer', type: 'reference', path: 'performer.actor', target: ['Practitioner'] },
-    { name: 'status', type: 'token', path: 'status' }
+    { name: 'patient', type: 'reference', path: 'subject', target: ['Patient'], description: 'Patient' },
+    { name: 'encounter', type: 'reference', path: 'context', target: ['Encounter'], description: 'Encounter' },
+    { name: 'code', type: 'token', path: 'medicationCodeableConcept', description: 'Medication code' },
+    { name: 'date', type: 'date', path: 'effective[x]', description: 'Administration date' },
+    { name: 'performer', type: 'reference', path: 'performer.actor', target: ['Practitioner'], description: 'Performer' },
+    { name: 'status', type: 'token', path: 'status', description: 'Status' }
   ],
   Procedure: [
     ...commonSearchParams,
-    { name: 'patient', type: 'reference', path: 'subject', target: ['Patient'] },
-    { name: 'encounter', type: 'reference', path: 'encounter', target: ['Encounter'] },
-    { name: 'code', type: 'token', path: 'code' },
-    { name: 'date', type: 'date', path: 'performed[x]' },
-    { name: 'performer', type: 'reference', path: 'performer.actor', target: ['Practitioner'] },
-    { name: 'status', type: 'token', path: 'status' }
+    { name: 'patient', type: 'reference', path: 'subject', target: ['Patient'], description: 'Patient' },
+    { name: 'encounter', type: 'reference', path: 'encounter', target: ['Encounter'], description: 'Encounter' },
+    { name: 'code', type: 'token', path: 'code', description: 'Procedure code' },
+    { name: 'date', type: 'date', path: 'performed[x]', description: 'Procedure date' },
+    { name: 'performer', type: 'reference', path: 'performer.actor', target: ['Practitioner'], description: 'Performer' },
+    { name: 'status', type: 'token', path: 'status', description: 'Status' }
   ],
   Condition: [
     ...commonSearchParams,
-    { name: 'patient', type: 'reference', path: 'subject', target: ['Patient'] },
-    { name: 'encounter', type: 'reference', path: 'encounter', target: ['Encounter'] },
-    { name: 'code', type: 'token', path: 'code' },
-    { name: 'onset', type: 'date', path: 'onset[x]' },
-    { name: 'clinical-status', type: 'token', path: 'clinicalStatus' },
-    { name: 'verification-status', type: 'token', path: 'verificationStatus' },
-    { name: 'category', type: 'token', path: 'category' },
-    { name: 'severity', type: 'token', path: 'severity' }
+    { name: 'patient', type: 'reference', path: 'subject', target: ['Patient'], description: 'Patient' },
+    { name: 'encounter', type: 'reference', path: 'encounter', target: ['Encounter'], description: 'Encounter' },
+    { name: 'code', type: 'token', path: 'code', description: 'Condition code' },
+    { name: 'onset', type: 'date', path: 'onset[x]', description: 'Onset date' },
+    { name: 'clinical-status', type: 'token', path: 'clinicalStatus', description: 'Clinical status' },
+    { name: 'verification-status', type: 'token', path: 'verificationStatus', description: 'Verification status' },
+    { name: 'category', type: 'token', path: 'category', description: 'Category' },
+    { name: 'severity', type: 'token', path: 'severity', description: 'Severity' }
   ]
 };
 

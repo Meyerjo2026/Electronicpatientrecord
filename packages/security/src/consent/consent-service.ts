@@ -3,8 +3,9 @@ import { ulid } from 'ulid';
 import {
   Consent,
   ConsentSchema,
-  ConsentSchema,
+  Reference,
   ReferenceSchema,
+  CodeableConcept,
   CodeableConceptSchema,
   PeriodSchema
 } from '@prehospital-epr/core';

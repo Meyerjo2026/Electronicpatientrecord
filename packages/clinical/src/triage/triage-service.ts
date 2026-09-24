@@ -65,13 +65,13 @@ export type TriageAssessment = z.infer<typeof TriageAssessmentSchema>;
 
 export const TriageProtocolSchema = z.object({
   id: z.string().regex(/^[0-9A-HJKMNP-TV-Z]{26}$/),
-  name: string,
+  name: z.string(),
   system: TriageSystemSchema,
-  version: string,
-  description: string,
+  version: z.string(),
+  description: z.string(),
   criteria: z.array(z.object({
-    name: string,
-    condition: string, // Expression to evaluate
+    name: z.string(),
+    condition: z.string(), // Expression to evaluate
     category: TriageCategorySchema,
     priority: z.number().int(),
   })),
@@ -166,7 +166,7 @@ export class TriageService {
   }
 
   // Perform triage assessment
-  async performTriage(assessment: Omit<TriageAssessment, 'id'>): Promise<TriageAssessment> {
+  async performTriage(assessment: Omit<TriageAssessment, 'id' | 'category'> & { category?: TriageAssessment['category'] }): Promise<TriageAssessment> {
     // Auto-determine category if not provided
     let category = assessment.category;
     

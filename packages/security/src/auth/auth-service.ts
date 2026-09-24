@@ -21,6 +21,8 @@ const AuthConfigSchema = z.object({
 
 export type AuthConfig = z.infer<typeof AuthConfigSchema>;
 
+type SecurityRole = z.infer<typeof SecurityRoleSchema>;
+
 const DEFAULT_ROLE_PERMISSIONS: Record<string, string[]> = {
   EMS_PROVIDER: [
     'PATIENT_READ', 'PATIENT_WRITE',
@@ -117,14 +119,14 @@ const DEFAULT_ROLE_PERMISSIONS: Record<string, string[]> = {
 
 export class AuthService {
   private config: AuthConfig;
-  private privateKey: CryptoKey | null = null;
-  publicKey: CryptoKey | null = null;
+  private privateKey: any = null;
+  publicKey: any = null;
   private sessions: Map<string, Session> = new Map();
   private refreshTokens: Map<string, { sessionId: string; expiresAt: number }> = new Map();
 
   constructor(config: Partial<AuthConfig> = {}) {
     this.config = AuthConfigSchema.parse({
-      issuer: 'prehospital-epr',
+      issuer: 'https://prehospital-epr.org',
       audience: 'prehospital-epr-client',
       ...config
     });
@@ -148,7 +150,7 @@ export class AuthService {
     // Validate credentials (would check against secure storage)
     const validatedRoles = roles.filter(r => SecurityRoleSchema.safeParse(r).success) as SecurityRole[];
     
-    const permissions = this.getPermissionsForRoles(validatedRoles);
+    const permissions = this.getPermissionsForRoles(validatedRoles) as Session['permissions'];
     
     const session: Session = {
       id: ulid(),
@@ -176,7 +178,7 @@ export class AuthService {
         audience: this.config.audience,
       });
       
-      const session = this.sessions.get(payload.sid as string);
+      const session = this.sessions.get(payload['sid'] as string);
       if (!session) return null;
       
       if (new Date(session.expiresAt) < new Date()) {
@@ -313,8 +315,8 @@ export class AuthService {
     const match = expiry.match(/^(\d+)([hmd])$/);
     if (!match) return 12 * 60 * 60 * 1000; // default 12h
     
-    const value = parseInt(match[1], 10);
-    const unit = match[2];
+    const value = parseInt(match[1] ?? '', 10);
+    const unit = match[2] ?? 'h';
     
     switch (unit) {
       case 'h': return value * 60 * 60 * 1000;

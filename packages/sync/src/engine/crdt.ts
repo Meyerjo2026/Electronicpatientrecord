@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { ULID } from 'ulid';
+import { ulid } from 'ulid';
 import * as CryptoJS from 'crypto-js';
 
 export const VectorClockSchema = z.record(z.string(), z.number().int().nonnegative());
@@ -127,11 +127,11 @@ export class OperationFactory {
     author: string,
     vectorClock: VectorClock,
     data?: any,
-    patch?: OperationSchema['patch'],
+    patch?: Operation['patch'],
     priority: number = 0
   ): Operation {
     return OperationSchema.parse({
-      id: ULID.generate(),
+      id: ulid(),
       type,
       resourceType,
       resourceId,
@@ -179,8 +179,22 @@ export class OperationFactory {
 }
 
 export class OperationHasher {
+  private static canonicalize(value: unknown): string {
+    if (Array.isArray(value)) {
+      return `[${value.map(v => this.canonicalize(v)).join(',')}]`;
+    }
+    if (value && typeof value === 'object') {
+      const obj = value as Record<string, unknown>;
+      return `{${Object.keys(obj)
+        .sort()
+        .map(k => `${JSON.stringify(k)}:${this.canonicalize(obj[k])}`)
+        .join(',')}}`;
+    }
+    return JSON.stringify(value);
+  }
+
   static hash(operation: Operation): string {
-    const canonical = JSON.stringify({
+    const canonical = this.canonicalize({
       id: operation.id,
       type: operation.type,
       resourceType: operation.resourceType,
@@ -190,8 +204,8 @@ export class OperationHasher {
       vectorClock: operation.vectorClock,
       data: operation.data,
       patch: operation.patch
-    }, Object.keys({}).sort()); // Sort keys for consistency
-    
+    });
+
     return CryptoJS.SHA256(canonical).toString(CryptoJS.enc.Hex);
   }
 
@@ -240,7 +254,7 @@ export class ConflictResolver {
       const mergedPatch = this.mergePatches(local.patch, remote.patch);
       return {
         ...local,
-        id: ULID.generate(),
+        id: ulid(),
         patch: mergedPatch,
         vectorClock: VectorClockManager.merge(local.vectorClock, remote.vectorClock),
         timestamp: new Date().toISOString()

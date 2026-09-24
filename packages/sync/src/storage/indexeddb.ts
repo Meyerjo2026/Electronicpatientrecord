@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { Operation, OperationSchema, SyncState, SyncStateSchema, VectorClock } from './crdt';
+import { Operation, OperationSchema, SyncState, SyncStateSchema, VectorClock } from '../engine/crdt';
 
 export const StorageConfigSchema = z.object({
   dbName: z.string().default('prehospital-epr'),
@@ -9,7 +9,7 @@ export const StorageConfigSchema = z.object({
     keyPath: z.string().optional(),
     autoIncrement: z.boolean().optional(),
     indexes: z.array(z.object({
-      name: string,
+name: z.string(),
       keyPath: z.string(),
       unique: z.boolean().optional(),
       multiEntry: z.boolean().optional()
@@ -151,7 +151,7 @@ const DEFAULT_STORES = [
 ];
 
 export class IndexedDBStorage {
-  private db: IDBDatabase | null = null;
+  private db: any = null;
   private config: StorageConfig;
   private initPromise: Promise<void> | null = null;
 
@@ -311,7 +311,7 @@ export class IndexedDBStorage {
   async markOperationSynced(id: string): Promise<void> {
     const op = await this.getOperation(id);
     if (op) {
-      op._synced = true;
+      (op as any)._synced = true;
       await this.putOperation(op);
     }
   }
@@ -434,7 +434,7 @@ export class IndexedDBStorage {
     const storeNames = Array.from(db.objectStoreNames);
     
     for (const storeName of storeNames) {
-      const store = await this.getStore(storeName);
+      const store = await this.getStore(String(storeName));
       await this.promisifyRequest(store.clear());
     }
   }

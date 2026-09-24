@@ -139,7 +139,7 @@ export type BundleEntry = z.infer<typeof BundleEntrySchema>;
 export function createBundle(
   type: z.infer<typeof BundleTypeSchema>,
   entries: BundleEntry[] = [],
-  options: { total?: number; identifier?: BundleSchema.shape.identifier } = {}
+  options: { total?: number; identifier?: z.infer<typeof BundleSchema>['identifier'] } = {}
 ): Bundle {
   return BundleSchema.parse({
     resourceType: 'Bundle',
@@ -160,7 +160,7 @@ export function createTransactionBundle(entries: BundleEntry[]): Bundle {
 export function createSearchsetBundle(
   entries: BundleEntry[],
   total: number,
-  links: BundleSchema.shape.link = []
+  links: z.infer<typeof BundleSchema>['link'] = []
 ): Bundle {
   const bundle = createBundle('searchset', entries, { total });
   return BundleSchema.parse({
@@ -174,7 +174,7 @@ export function createDocumentBundle(
   entries: BundleEntry[] = []
 ): Bundle {
   const allEntries = [
-    { fullUrl: `urn:uuid:${composition.id}`, resource: composition },
+    { fullUrl: `urn:uuid:${(composition as any).id}`, resource: composition },
     ...entries
   ];
   return createBundle('document', allEntries);

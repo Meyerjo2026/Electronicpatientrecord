@@ -2,8 +2,6 @@ import { z } from 'zod';
 import { ulid } from 'ulid';
 import {
   Observation,
-  Device,
-  DeviceMetric,
   Quantity,
   CodeableConcept,
   SampledData
@@ -316,7 +314,7 @@ export class DeviceService {
   }
 
   private generateSimulatedData(device: DeviceConfig): VitalSignsData {
-    const measurements = [];
+    const measurements: VitalSignsData['measurements'] = [];
     const baseTime = new Date().toISOString();
 
     // Generate realistic vital signs based on device type

@@ -7,15 +7,25 @@ import {
   MedicationAdministration,
   Procedure,
   Condition,
-  DocumentReference,
-  DiagnosticReport,
-  Bundle,
   Reference,
   CodeableConcept,
   Period,
   Identifier
 } from '@prehospital-epr/core';
-import { createBundle, BundleType } from '@prehospital-epr/fhir';
+import { createBundle, type Bundle } from '@prehospital-epr/fhir';
+
+type DiagnosticReport = { resourceType: 'DiagnosticReport'; id: string };
+type DocumentReference = { resourceType: 'DocumentReference'; id: string };
+
+const ReferenceSchema = z.object({
+  reference: z.string(),
+  type: z.string().optional(),
+  identifier: z.object({
+    system: z.string().url(),
+    value: z.string(),
+  }).optional(),
+  display: z.string().optional(),
+});
 
 export const HandoffFormatSchema = z.enum([
   'IMIST-AMBO',
@@ -72,16 +82,6 @@ const HandoffBaseSchema = z.object({
 });
 
 export type Handoff = z.infer<typeof HandoffBaseSchema>;
-
-const ReferenceSchema = z.object({
-  reference: z.string(),
-  type: z.string().optional(),
-  identifier: z.object({
-    system: z.string().url(),
-    value: z.string(),
-  }).optional(),
-  display: z.string().optional(),
-});
 
 export class HandoffService {
   private handoffs: Map<string, Handoff> = new Map();
@@ -240,13 +240,13 @@ RECOMMENDATION: ${recommendation}. ETA: ${this.getETA(encounter)}
     patientId: string;
     format: z.infer<typeof HandoffFormatSchema>;
     priority: z.infer<typeof HandoffPrioritySchema>;
-    fromFacility: Reference;
-    toFacility: Reference;
-    fromProvider: Reference;
-    toProvider?: Reference;
+    fromFacility: z.infer<typeof ReferenceSchema>;
+    toFacility: z.infer<typeof ReferenceSchema>;
+    fromProvider: z.infer<typeof ReferenceSchema>;
+    toProvider?: z.infer<typeof ReferenceSchema>;
     content: string;
     structuredData?: any;
-    attachments?: Reference[];
+    attachments?: z.infer<typeof ReferenceSchema>[];
     metadata?: Handoff['metadata'];
   }): Promise<Handoff> {
     const handoff: Handoff = {

@@ -1,10 +1,10 @@
 import { z } from 'zod';
-import { ULID } from 'ulid';
+import { ulid } from 'ulid';
 
 export const ulidSchema = z.string().regex(/^[0-9A-HJKMNP-TV-Z]{26}$/, 'Invalid ULID');
 
 export function generateId(): string {
-  return ULID.generate();
+  return ulid();
 }
 
 export function isValidULID(id: string): boolean {
@@ -39,7 +39,7 @@ export const BaseResourceSchema = z.object({
 
 export type BaseResource = z.infer<typeof BaseResourceSchema>;
 
-export const IdentifierSchema = z.object({
+export const IdentifierSchema: z.ZodType<any> = z.object({
   use: z.enum(['usual', 'official', 'temp', 'secondary', 'old']).optional(),
   type: z.object({
     coding: z.array(z.object({
@@ -58,7 +58,7 @@ export const IdentifierSchema = z.object({
   assigner: z.object({
     reference: z.string().optional(),
     type: z.string().optional(),
-    identifier: IdentifierSchema.optional(),
+    identifier: z.lazy(() => IdentifierSchema).optional(),
     display: z.string().optional()
   }).optional()
 });

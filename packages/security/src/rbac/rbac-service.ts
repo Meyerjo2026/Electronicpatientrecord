@@ -186,7 +186,7 @@ export class RBACService {
       }
     }
     
-    const hasPermission = userPermissions.includes(permission);
+    const hasPermission = userPermissions.includes(permission as any);
     
     return {
       allowed: hasPermission,
@@ -218,7 +218,7 @@ export class RBACService {
       }
     }
     
-    const results = permissions.map(p => userPermissions.includes(p));
+    const results = permissions.map(p => userPermissions.includes(p as any));
     const allowed = requireAll ? results.every(r => r) : results.some(r => r);
     const missing = permissions.filter((p, i) => !results[i]);
     
@@ -381,7 +381,7 @@ export class RBACService {
   }
 
   setRoleHierarchy(hierarchy: Record<string, string[]>): void {
-    this.config.roleHierarchy = hierarchy;
+    this.config.roleHierarchy = hierarchy as RBACConfig['roleHierarchy'];
   }
 
   // Check if role can manage another role
