@@ -12,8 +12,8 @@ interface AuthState {
 }
 
 const initialState: AuthState = {
-  isAuthenticated: false,
-  isLoading: true,
+  isAuthenticated: true, // Set to true for demo/testing
+  isLoading: false,
   session: null,
   error: null,
   biometricEnabled: false,
@@ -59,8 +59,26 @@ export const checkAuthStatus = createAsyncThunk(
   'auth/checkStatus',
   async (_, { rejectWithValue }) => {
     // Check for existing session in secure storage
-    // For now, return unauthenticated
-    return null;
+    // For demo, create a mock session
+    return {
+      id: ulid(),
+      userId: ulid(),
+      deviceId: ulid(),
+      roles: ['EMS_PROVIDER', 'EMS_SUPERVISOR'],
+      permissions: [
+        'PATIENT_READ', 'PATIENT_WRITE',
+        'ENCOUNTER_READ', 'ENCOUNTER_WRITE',
+        'OBSERVATION_READ', 'OBSERVATION_WRITE',
+        'MEDICATION_ADMINISTER',
+        'PROCEDURE_PERFORM',
+        'DOCUMENT_SIGN',
+        'HANDOFF_CREATE',
+        'REPORT_GENERATE'
+      ],
+      issuedAt: new Date().toISOString(),
+      expiresAt: new Date(Date.now() + 12 * 60 * 60 * 1000).toISOString(),
+      lastActivity: new Date().toISOString(),
+    };
   }
 );
 
