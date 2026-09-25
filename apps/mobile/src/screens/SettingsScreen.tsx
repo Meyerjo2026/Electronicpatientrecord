@@ -184,6 +184,15 @@ export const SettingsScreen: React.FC = () => {
             chevron
             onPress={() => navigation.navigate('QualityIndicators')}
           />
+          <Divider inset={theme.spacing.lg} />
+          <ListRow
+            title="Form readiness"
+            subtitle="What this build can enforce, and what it still needs to capture"
+            icon="stats-chart-outline"
+            iconTone="primary"
+            chevron
+            onPress={() => navigation.navigate('FormReadiness')}
+          />
         </Card>
       </Section>
 
