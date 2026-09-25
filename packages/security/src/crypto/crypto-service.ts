@@ -65,9 +65,7 @@ export class CryptoService {
       iterations: this.config.pbkdf2Iterations,
     });
 
-    let encrypted: CryptoJS.lib.CipherParams;
-    
-    encrypted = CryptoJS.AES.encrypt(plaintext, key, {
+    const encrypted = CryptoJS.AES.encrypt(plaintext, key, {
       iv,
       mode: CryptoJS.mode.CBC,
       padding: CryptoJS.pad.Pkcs7,

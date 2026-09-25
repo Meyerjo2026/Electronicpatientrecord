@@ -1,6 +1,6 @@
 import React, { createContext, useCallback, useContext, useMemo } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
-import { AppDispatch, RootState } from '../store';
+import type { AppDispatch, RootState } from '../store';
 import { syncNow, setOnlineStatus } from '../store/syncSlice';
 
 interface SyncContextType {

@@ -10,8 +10,8 @@ import {
   TextField,
   useTheme,
 } from '@prehospital-epr/ui';
-import { AppDispatch, RootState } from '../store';
-import { checkAuthStatus, clearError, login } from '../store/authSlice';
+import type { AppDispatch, RootState } from '../store';
+import { checkAuthStatus, clearError, DEMO_AUTH_ENABLED, login } from '../store/authSlice';
 
 export const LoginScreen: React.FC = () => {
   const theme = useTheme();
@@ -61,109 +61,124 @@ export const LoginScreen: React.FC = () => {
           </View>
         </View>
 
-        <Card>
-          <TextField
-            label="Username"
-            required
-            value={username}
-            onChangeText={value => {
-              setUsername(value);
-              if (error) dispatch(clearError());
-            }}
-            placeholder="EMS crew identifier"
-            autoCapitalize="none"
-            autoCorrect={false}
-            textContentType="username"
-            returnKeyType="next"
-            editable={!isLoading}
-          />
-
-          <TextField
-            label="Password"
-            required
-            value={password}
-            onChangeText={value => {
-              setPassword(value);
-              if (error) dispatch(clearError());
-            }}
-            placeholder="••••••••"
-            secureTextEntry
-            autoCapitalize="none"
-            autoCorrect={false}
-            textContentType="password"
-            returnKeyType="go"
-            onSubmitEditing={canSubmit ? handleSignIn : undefined}
-            editable={!isLoading}
-          />
-
-          <TextField
-            label="PIN"
-            help="Required on shared and vehicle-mounted devices."
-            value={pin}
-            onChangeText={setPin}
-            placeholder="4 digits"
-            keyboardType="number-pad"
-            secureTextEntry
-            maxLength={4}
-            editable={!isLoading}
-          />
-
-          {error ? (
-            <View
-              style={{
-                flexDirection: 'row',
-                alignItems: 'center',
-                gap: theme.spacing.sm,
-                padding: theme.spacing.md,
-                marginBottom: theme.spacing.lg,
-                borderRadius: theme.borderRadius.md,
-                backgroundColor: theme.colors.errorSurface,
-              }}
-              accessibilityLiveRegion="assertive"
-            >
-              <Ionicons name="alert-circle" size={17} color={theme.colors.error} />
-              <Text variant="subheading" tone="critical" style={{ flex: 1 }}>
-                {error}
+        {!DEMO_AUTH_ENABLED ? (
+          <Card>
+            <View style={{ alignItems: 'center', gap: theme.spacing.sm }}>
+              <Ionicons name="lock-closed" size={26} color={theme.colors.warning} />
+              <Text variant="subheading" style={{ textAlign: 'center' }}>
+                Sign-in is not configured
+              </Text>
+              <Text variant="caption" tone="tertiary" style={{ textAlign: 'center' }}>
+                This build has no authentication provider connected, so no crew member can be
+                signed in. The demo login is available in development builds only.
               </Text>
             </View>
-          ) : null}
+          </Card>
+        ) : (
+          <Card>
+            <TextField
+              label="Username"
+              required
+              value={username}
+              onChangeText={value => {
+                setUsername(value);
+                if (error) dispatch(clearError());
+              }}
+              placeholder="EMS crew identifier"
+              autoCapitalize="none"
+              autoCorrect={false}
+              textContentType="username"
+              returnKeyType="next"
+              editable={!isLoading}
+            />
 
-          <Button
-            label="Sign In"
-            onPress={handleSignIn}
-            loading={isLoading}
-            disabled={!canSubmit}
-            fullWidth
-            size="lg"
-            icon="log-in-outline"
-          />
+            <TextField
+              label="Password"
+              required
+              value={password}
+              onChangeText={value => {
+                setPassword(value);
+                if (error) dispatch(clearError());
+              }}
+              placeholder="••••••••"
+              secureTextEntry
+              autoCapitalize="none"
+              autoCorrect={false}
+              textContentType="password"
+              returnKeyType="go"
+              onSubmitEditing={canSubmit ? handleSignIn : undefined}
+              editable={!isLoading}
+            />
 
-          {biometricEnabled ? (
-            <>
+            <TextField
+              label="PIN"
+              help="Required on shared and vehicle-mounted devices."
+              value={pin}
+              onChangeText={setPin}
+              placeholder="4 digits"
+              keyboardType="number-pad"
+              secureTextEntry
+              maxLength={4}
+              editable={!isLoading}
+            />
+
+            {error ? (
               <View
                 style={{
                   flexDirection: 'row',
                   alignItems: 'center',
-                  gap: theme.spacing.md,
-                  marginVertical: theme.spacing.lg,
+                  gap: theme.spacing.sm,
+                  padding: theme.spacing.md,
+                  marginBottom: theme.spacing.lg,
+                  borderRadius: theme.borderRadius.md,
+                  backgroundColor: theme.colors.errorSurface,
                 }}
+                accessibilityLiveRegion="assertive"
               >
-                <View style={{ flex: 1, height: 1, backgroundColor: theme.colors.separator }} />
-                <Text variant="caption" tone="tertiary">
-                  or
+                <Ionicons name="alert-circle" size={17} color={theme.colors.error} />
+                <Text variant="subheading" tone="critical" style={{ flex: 1 }}>
+                  {error}
                 </Text>
-                <View style={{ flex: 1, height: 1, backgroundColor: theme.colors.separator }} />
               </View>
-              <Button
-                label="Use biometrics"
-                onPress={() => dispatch(checkAuthStatus())}
-                variant="secondary"
-                fullWidth
-                icon="finger-print-outline"
-              />
-            </>
-          ) : null}
-        </Card>
+            ) : null}
+
+            <Button
+              label="Sign In"
+              onPress={handleSignIn}
+              loading={isLoading}
+              disabled={!canSubmit}
+              fullWidth
+              size="lg"
+              icon="log-in-outline"
+            />
+
+            {biometricEnabled ? (
+              <>
+                <View
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    gap: theme.spacing.md,
+                    marginVertical: theme.spacing.lg,
+                  }}
+                >
+                  <View style={{ flex: 1, height: 1, backgroundColor: theme.colors.separator }} />
+                  <Text variant="caption" tone="tertiary">
+                    or
+                  </Text>
+                  <View style={{ flex: 1, height: 1, backgroundColor: theme.colors.separator }} />
+                </View>
+                <Button
+                  label="Use biometrics"
+                  onPress={() => dispatch(checkAuthStatus())}
+                  variant="secondary"
+                  fullWidth
+                  icon="finger-print-outline"
+                />
+              </>
+            ) : null}
+          </Card>
+        )}
 
         <Text
           variant="caption"

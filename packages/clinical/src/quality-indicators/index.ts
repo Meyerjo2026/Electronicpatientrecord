@@ -49,10 +49,24 @@ export function searchQualityIndicators(term: string): QualityIndicatorModule[] 
 /** A capture field plus the requirement metadata derived from its prose. */
 export interface QualityIndicatorFieldDetail extends QualityIndicatorField {
   /**
-   * True when the document marks the field mandatory outright, e.g.
+   * True when the document marks the field mandatory in any form, e.g.
    * `Mandatory field.` or `Mandatory field if AMI-01 != No.`
+   *
+   * This does not mean *unconditionally* required: a conditional mandate
+   * reports `mandatory: true` together with
+   * {@link conditionallyRequired} set. Callers that need to know whether a
+   * field is always required must check both, otherwise `Mandatory if` fields
+   * will be read as unconditional requirements.
    */
   mandatory: boolean;
+  /**
+   * True when the document makes the requirement depend on a condition, e.g.
+   * `Mandatory field if AMI-01 != No` or `Conditional.`.
+   *
+   * Kept separate from `mandatory` because a conditional requirement is not a
+   * requirement, and treating it as one would flag valid reports as incomplete.
+   */
+  conditionallyRequired: boolean;
   /**
    * Machine-readable condition extracted from the `if ...` clause, or `null`
    * when the dependency could not be parsed. `null` never means "not required";
@@ -67,6 +81,38 @@ export interface QualityIndicatorFieldDetail extends QualityIndicatorField {
 
 /** `Mandatory` in any of the phrasings the documents use. */
 const MANDATORY = /\bmandatory\b/i;
+/** `Mandatory ... if/where/for/on ...`, i.e. required under a condition. */
+const CONDITIONAL_MANDATE = /\bmandatory\s+(?:field\s+)?(?:if|where|for|on)\b/i;
+/** Fields the documents open with `Optional`. */
+const OPTIONAL_LEAD = /^optional\b/i;
+/** Fields the documents open with `Conditional`. */
+const CONDITIONAL_LEAD = /^conditional\b/i;
+
+/**
+ * Read the requirement out of a validation sentence.
+ *
+ * The documents use four openings: `Mandatory field`, `Conditional`,
+ * `Optional field` and `Calculated field`, plus conditional mandates such as
+ * `Mandatory field if AMI-01 != No`. A plain substring test for "mandatory"
+ * gets `Optional field, becomes mandatory if ...` wrong, reporting a field the
+ * document calls optional as unconditionally required.
+ */
+function readRequirement(validation: string): {
+  mandatory: boolean;
+  conditionallyRequired: boolean;
+} {
+  const text = validation.trim();
+  if (OPTIONAL_LEAD.test(text)) {
+    return { mandatory: false, conditionallyRequired: MANDATORY.test(text) };
+  }
+  if (CONDITIONAL_LEAD.test(text)) {
+    return { mandatory: false, conditionallyRequired: true };
+  }
+  if (!MANDATORY.test(text)) {
+    return { mandatory: false, conditionallyRequired: false };
+  }
+  return { mandatory: true, conditionallyRequired: CONDITIONAL_MANDATE.test(text) };
+}
 
 /**
  * Attach requirement metadata to every field in a module.
@@ -83,7 +129,7 @@ export function describeQualityIndicatorFields(
     const parsed = parseQualityConditions(extractConditionClause(field.validation));
     return {
       ...field,
-      mandatory: MANDATORY.test(field.validation),
+      ...readRequirement(field.validation),
       requiredWhen: parsed.complete && parsed.conditions.length > 0 ? parsed.conditions : null,
       requirementProse: field.validation,
       rules: module.rules.filter(rule => ruleTargetsField(rule, field.id)),

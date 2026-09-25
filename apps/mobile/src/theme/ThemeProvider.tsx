@@ -5,7 +5,7 @@ import {
   useResolvedScheme,
   type ThemePreference,
 } from '@prehospital-epr/ui';
-import { RootState } from '../store';
+import type { RootState } from '../store';
 
 /**
  * Bridges the persisted theme preference in `uiSlice` to the design system.

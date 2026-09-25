@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { ulid } from 'ulid';
-import {
+import type {
   Patient,
   Encounter,
   Observation,
@@ -8,9 +8,11 @@ import {
   Procedure,
   Condition,
   Reference,
+} from '@prehospital-epr/core';
+import {
   CodeableConcept,
   Period,
-  Identifier
+  Identifier,
 } from '@prehospital-epr/core';
 import { createBundle, type Bundle } from '@prehospital-epr/fhir';
 

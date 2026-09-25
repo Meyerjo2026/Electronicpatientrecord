@@ -1,10 +1,10 @@
 import React from 'react';
+import type { TextInputProps } from 'react-native';
 import {
   Pressable,
   ScrollView,
   StyleSheet,
   TextInput,
-  TextInputProps,
   View,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';

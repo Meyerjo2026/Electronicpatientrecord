@@ -20,7 +20,7 @@ import type {
   ProcedureCategory,
   Route,
 } from '@prehospital-epr/core';
-import { AppDispatch, RootState } from '../store';
+import type { AppDispatch, RootState } from '../store';
 import {
   MEDICATION_CATEGORIES,
   PROCEDURE_CATEGORIES,

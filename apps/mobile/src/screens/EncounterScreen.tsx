@@ -16,7 +16,7 @@ import {
   useTheme,
 } from '@prehospital-epr/ui';
 import { assessVitalSignsSet, worstVitalLevel } from '@prehospital-epr/clinical';
-import { AppDispatch, RootState } from '../store';
+import type { AppDispatch, RootState } from '../store';
 import { updateEncounterStatus } from '../store/encounterSlice';
 import type { MainStackParamList } from '../navigation/AppNavigator';
 import {

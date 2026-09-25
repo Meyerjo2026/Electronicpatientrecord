@@ -42,6 +42,12 @@ jobs:
       - name: Typecheck
         run: npm run typecheck $PACKAGES
 
+      # Warnings are reported, not failed: the repo has a pre-existing
+      # no-unused-vars / no-explicit-any backlog that is being worked down
+      # rather than hidden. Errors do fail the build.
+      - name: Lint
+        run: npm run lint $PACKAGES
+
       - name: Run unit tests
         run: npm test $PACKAGES
 

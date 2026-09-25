@@ -1,4 +1,5 @@
-import { ColorScheme, Theme, createTheme } from './tokens';
+import type { ColorScheme } from './tokens';
+import { Theme, createTheme } from './tokens';
 
 export type ThemePreference = 'light' | 'dark' | 'auto';
 

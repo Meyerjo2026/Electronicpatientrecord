@@ -2,12 +2,12 @@ import { z } from 'zod';
 import * as jose from 'jose';
 import * as CryptoJS from 'crypto-js';
 import { ulid } from 'ulid';
+import type { Session } from '@prehospital-epr/core';
 import {
-  Session,
   SessionSchema,
   SecurityRoleSchema,
   SecurityPermissionSchema,
-  RolePermissionsSchema
+  RolePermissionsSchema,
 } from '@prehospital-epr/core';
 
 const AuthConfigSchema = z.object({

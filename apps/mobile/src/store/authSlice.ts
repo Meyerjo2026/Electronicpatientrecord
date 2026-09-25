@@ -1,5 +1,6 @@
-import { createSlice, createAsyncThunk, PayloadAction } from '@reduxjs/toolkit';
-import { Session } from '@prehospital-epr/core';
+import type { PayloadAction } from '@reduxjs/toolkit';
+import { createSlice, createAsyncThunk } from '@reduxjs/toolkit';
+import type { Session } from '@prehospital-epr/core';
 import { ulid } from 'ulid';
 
 interface AuthState {
@@ -59,12 +60,33 @@ export function isSessionValid(session: Session | null): session is Session {
 }
 
 /**
+ * Whether the placeholder demo login is available.
+ *
+ * `__DEV__` is true only in development and Metro dev bundles, and false in
+ * every release build. Gating on it means a shipped app cannot be signed into
+ * with `demo`/`demo` and handed document-signing rights. The default is
+ * therefore "closed": authentication has to be implemented before a release
+ * build can be used at all, rather than the other way round.
+ */
+export const DEMO_AUTH_ENABLED: boolean = typeof __DEV__ !== 'undefined' && __DEV__;
+
+/** Shown when a release build has no real authentication wired up yet. */
+export const AUTH_UNAVAILABLE = 'Authentication is not available in this build';
+
+/**
  * Placeholder credential check. Replace with a call to the Laravel
  * `/api/fhir/auth/login` endpoint once the API client is wired up.
+ *
+ * Until then the only accepted credentials are the demo pair, and only in a
+ * development build.
  */
 export const login = createAsyncThunk(
   'auth/login',
   async (credentials: { username: string; password: string; pin?: string }, { rejectWithValue }) => {
+    if (!DEMO_AUTH_ENABLED) {
+      return rejectWithValue(AUTH_UNAVAILABLE);
+    }
+
     await new Promise(resolve => setTimeout(resolve, 1000));
 
     if (credentials.username === 'demo' && credentials.password === 'demo') {
@@ -85,6 +107,12 @@ export const checkAuthStatus = createAsyncThunk(
     const state = getState() as { auth: AuthState };
     const session = state.auth.session;
 
+    // A session persisted by a development build must not carry over into a
+    // release build of the same app.
+    if (!DEMO_AUTH_ENABLED) {
+      return rejectWithValue(AUTH_UNAVAILABLE);
+    }
+
     if (isSessionValid(session)) {
       return session;
     }
@@ -103,6 +131,9 @@ export const refreshSession = createAsyncThunk(
   'auth/refresh',
   async (_, { getState, rejectWithValue }) => {
     const state = getState() as { auth: AuthState };
+    if (!DEMO_AUTH_ENABLED) {
+      return rejectWithValue(AUTH_UNAVAILABLE);
+    }
     if (isSessionValid(state.auth.session)) {
       return { ...state.auth.session, lastActivity: new Date().toISOString() };
     }

@@ -15,7 +15,7 @@ import {
   useTheme,
   type Tone,
 } from '@prehospital-epr/ui';
-import { AppDispatch, RootState } from '../store';
+import type { AppDispatch, RootState } from '../store';
 import { clearSearchResults, createPatient, searchPatients, setCurrentPatient } from '../store/patientSlice';
 import { createEncounter } from '../store/encounterSlice';
 import {

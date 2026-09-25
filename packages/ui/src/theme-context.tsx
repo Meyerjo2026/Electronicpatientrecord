@@ -1,7 +1,9 @@
 import React, { createContext, useContext, useMemo } from 'react';
 import { useColorScheme } from 'react-native';
-import { ColorScheme, Theme, createTheme } from './tokens';
-import { ThemePreference, resolveScheme } from './scheme';
+import type { ColorScheme, Theme } from './tokens';
+import { createTheme } from './tokens';
+import type { ThemePreference } from './scheme';
+import { resolveScheme } from './scheme';
 
 export type { ThemePreference } from './scheme';
 export { resolveScheme } from './scheme';

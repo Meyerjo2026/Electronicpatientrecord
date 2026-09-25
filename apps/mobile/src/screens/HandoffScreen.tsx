@@ -20,7 +20,7 @@ import {
   vitalSignsSetToObservations,
   type HandoffFormat,
 } from '@prehospital-epr/clinical';
-import { RootState } from '../store';
+import type { RootState } from '../store';
 import {
   ENCOUNTER_STATUS_LABELS,
   formatClock,

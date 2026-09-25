@@ -1,10 +1,10 @@
 import { z } from 'zod';
 import { ulid } from 'ulid';
+import type { Observation } from '@prehospital-epr/core';
 import {
-  Observation,
   Quantity,
   CodeableConcept,
-  SampledData
+  SampledData,
 } from '@prehospital-epr/core';
 
 export const DeviceTypeSchema = z.enum([

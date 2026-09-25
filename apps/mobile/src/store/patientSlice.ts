@@ -1,5 +1,6 @@
-import { createSlice, createAsyncThunk, PayloadAction } from '@reduxjs/toolkit';
-import { Patient, PatientCreate, PatientSearchParams } from '@prehospital-epr/core';
+import type { PayloadAction } from '@reduxjs/toolkit';
+import { createSlice, createAsyncThunk } from '@reduxjs/toolkit';
+import type { Patient, PatientCreate, PatientSearchParams } from '@prehospital-epr/core';
 import { ulid } from 'ulid';
 
 /**

@@ -6,7 +6,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useSelector } from 'react-redux';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme, type Theme } from '@prehospital-epr/ui';
-import { RootState } from '../store';
+import type { RootState } from '../store';
 import { LoadingScreen } from '../components/LoadingScreen';
 import { DashboardScreen } from '../screens/DashboardScreen';
 import { PatientListScreen } from '../screens/PatientListScreen';

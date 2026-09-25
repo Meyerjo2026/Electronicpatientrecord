@@ -15,7 +15,7 @@ import {
   useTheme,
   type ThemePreference,
 } from '@prehospital-epr/ui';
-import { AppDispatch, RootState } from '../store';
+import type { AppDispatch, RootState } from '../store';
 import { logout, setBiometricEnabled, setPinEnabled } from '../store/authSlice';
 import { setTheme } from '../store/uiSlice';
 import { useSync } from '../providers/SyncProvider';

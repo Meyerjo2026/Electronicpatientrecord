@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { Observation, VitalSignsSet, Quantity } from '@prehospital-epr/core';
+import type { Observation, VitalSignsSet, Quantity } from '@prehospital-epr/core';
 
 /**
  * Age bands used to select paediatric vs adult reference ranges.

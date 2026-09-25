@@ -1,5 +1,6 @@
 import { z } from 'zod';
-import { Operation, OperationSchema, SyncState, SyncStateSchema, VectorClock } from '../engine/crdt';
+import type { Operation, SyncState } from '../engine/crdt';
+import { OperationSchema, SyncStateSchema, VectorClock } from '../engine/crdt';
 
 export const StorageConfigSchema = z.object({
   dbName: z.string().default('prehospital-epr'),

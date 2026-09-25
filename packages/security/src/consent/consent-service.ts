@@ -1,13 +1,15 @@
 import { z } from 'zod';
 import { ulid } from 'ulid';
-import {
+import type {
   Consent,
+  CodeableConcept,
+} from '@prehospital-epr/core';
+import {
   ConsentSchema,
   Reference,
   ReferenceSchema,
-  CodeableConcept,
   CodeableConceptSchema,
-  PeriodSchema
+  PeriodSchema,
 } from '@prehospital-epr/core';
 
 const ConsentConfigSchema = z.object({

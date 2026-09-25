@@ -17,7 +17,7 @@ import {
   useTheme,
   type Tone,
 } from '@prehospital-epr/ui';
-import { AppDispatch, RootState } from '../store';
+import type { AppDispatch, RootState } from '../store';
 import { createEncounter, setActiveEncounter, setCurrentEncounter } from '../store/encounterSlice';
 import { setCurrentPatient } from '../store/patientSlice';
 import { useSync } from '../providers/SyncProvider';

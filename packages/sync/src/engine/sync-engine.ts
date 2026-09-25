@@ -1,15 +1,17 @@
 import { z } from 'zod';
-import {
+import type {
   Operation,
-  OperationSchema,
   VectorClock,
   SyncState,
-  SyncStateSchema,
   SyncConfig,
+} from './crdt';
+import {
+  OperationSchema,
+  SyncStateSchema,
   SyncConfigSchema,
   VectorClockManager,
   OperationFactory,
-  ConflictResolver
+  ConflictResolver,
 } from './crdt';
 
 export const SyncEventSchema = z.object({

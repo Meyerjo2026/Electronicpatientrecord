@@ -8,9 +8,10 @@ import {
   Condition,
   AuditEvent,
   Consent,
-  VitalSignsSet
+  VitalSignsSet,
 } from '@prehospital-epr/core';
-import { FHIRResource, validateResource } from '../resources/bundle';
+import type { FHIRResource } from '../resources/bundle';
+import { validateResource } from '../resources/bundle';
 
 export const FHIRValidationResultSchema = z.object({
   success: z.boolean(),
@@ -36,7 +37,7 @@ import {
   ObservationSchema,
   MedicationAdministrationSchema,
   ProcedureSchema,
-  ConditionSchema
+  ConditionSchema,
 } from '@prehospital-epr/core';
 
 const validators: Record<string, z.ZodSchema> = {

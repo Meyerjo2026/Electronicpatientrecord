@@ -1,15 +1,17 @@
 import { z } from 'zod';
 import { ulid } from 'ulid';
 import * as CryptoJS from 'crypto-js';
-import {
+import type {
   AuditEvent,
   AuditEventCreate,
+} from '@prehospital-epr/core';
+import {
   AuditEventActionSchema,
   AuditEventOutcomeSchema,
   AuditEventAgentSchema,
   AuditEventSourceSchema,
   AuditEventEntitySchema,
-  SecurityRoleSchema
+  SecurityRoleSchema,
 } from '@prehospital-epr/core';
 
 const AuditConfigSchema = z.object({

@@ -1,6 +1,6 @@
 import * as CryptoJS from 'crypto-js';
 import { ulid } from 'ulid';
-import { Session } from '@prehospital-epr/core';
+import type { Session } from '@prehospital-epr/core';
 import {
   CryptoService,
   AuthService,

@@ -1,12 +1,14 @@
 import React, { useMemo } from 'react';
+import type {
+  TextProps as RNTextProps,
+  TextStyle,
+  ViewProps,
+} from 'react-native';
 import {
   ActivityIndicator,
   StyleSheet,
   Text as RNText,
-  TextProps as RNTextProps,
-  TextStyle,
   View,
-  ViewProps,
 } from 'react-native';
 import { useTheme } from '../theme-context';
 

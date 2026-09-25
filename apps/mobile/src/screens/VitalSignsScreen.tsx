@@ -24,7 +24,7 @@ import {
   type GcsComponents,
   type VitalSignKey,
 } from '@prehospital-epr/clinical';
-import { AppDispatch, RootState } from '../store';
+import type { AppDispatch, RootState } from '../store';
 import { recordVitalSigns } from '../store/observationSlice';
 import { formatClock, formatDate, patientAgeYears } from '../utils/format';
 

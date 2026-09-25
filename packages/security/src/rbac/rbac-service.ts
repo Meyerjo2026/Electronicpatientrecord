@@ -1,9 +1,9 @@
 import { z } from 'zod';
+import type { Session } from '@prehospital-epr/core';
 import {
   SecurityRoleSchema,
   SecurityPermissionSchema,
   RolePermissionsSchema,
-  Session
 } from '@prehospital-epr/core';
 
 const RBACConfigSchema = z.object({

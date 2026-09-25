@@ -15,6 +15,7 @@ import {
 } from '@prehospital-epr/ui';
 import {
   describeQualityIndicatorFields,
+  type QualityIndicatorFieldDetail,
   listQualityIndicatorModules,
   parseQualityConditions,
   qualityIndicatorCoverage,
@@ -30,6 +31,36 @@ import {
  * with whether the app can actually check it, so a clinician can see where the
  * software is enforcing something and where only the document can help.
  */
+/**
+ * Four distinct states, because "not mandatory" is not the same as "optional":
+ * a field can be required outright, required only under a stated condition,
+ * required conditionally in prose the app cannot evaluate, or optional.
+ */
+const RequirementBadge: React.FC<{ field: QualityIndicatorFieldDetail }> = ({ field }) => {
+  if (field.mandatory) {
+    return (
+      <Badge
+        label={field.conditionallyRequired ? 'Mandatory if' : 'Mandatory'}
+        tone={field.conditionallyRequired ? 'primary' : 'info'}
+      />
+    );
+  }
+  if (field.conditionallyRequired) {
+    return (
+      <Badge
+        label={field.requiredWhen ? 'Mandatory if' : 'Conditional'}
+        tone={field.requiredWhen ? 'primary' : 'warning'}
+      />
+    );
+  }
+  return (
+    <Badge
+      label={/^Calculated/i.test(field.validation) ? 'Calculated' : 'Optional'}
+      tone="neutral"
+    />
+  );
+};
+
 export const QualityIndicatorsScreen: React.FC = () => {
   const theme = useTheme();
   const [query, setQuery] = useState('');
@@ -57,7 +88,10 @@ export const QualityIndicatorsScreen: React.FC = () => {
 
   if (openModule && coverage) {
     const mandatory = fields.filter(field => field.mandatory).length;
-    const conditional = fields.filter(field => field.requiredWhen !== null).length;
+    const conditional = fields.filter(field => field.conditionallyRequired).length;
+    const optional = fields.filter(
+      field => !field.mandatory && !field.conditionallyRequired
+    ).length;
 
     return (
       <Screen>
@@ -76,8 +110,7 @@ export const QualityIndicatorsScreen: React.FC = () => {
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: theme.spacing.sm }}>
             <Badge label={`${fields.length} fields`} tone="neutral" />
             <Badge label={`${mandatory} mandatory`} tone="info" />
-            {conditional > 0 ? <Badge label={`${conditional} conditional`} tone="primary" /> : null}
-            <Badge
+            {conditional > 0 ? <Badge label={`${conditional} conditional`} tone="primary" /> : null}            <Badge
               label={`${coverage.machineChecked}/${coverage.total} rules auto-checked`}
               tone={coverage.machineChecked === coverage.total ? 'success' : 'warning'}
             />
@@ -102,14 +135,7 @@ export const QualityIndicatorsScreen: React.FC = () => {
                     </Text>
                   </View>
                   <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: theme.spacing.xs }}>
-                    {field.mandatory ? (
-                      <Badge
-                        label={field.requiredWhen ? 'Mandatory if' : 'Mandatory'}
-                        tone={field.requiredWhen ? 'primary' : 'info'}
-                      />
-                    ) : (
-                      <Badge label="Optional" tone="neutral" />
-                    )}
+                    <RequirementBadge field={field} />
                     <Badge label={field.dataType} tone="neutral" />
                   </View>
                   <Text variant="caption" tone="tertiary">
@@ -173,8 +199,9 @@ export const QualityIndicatorsScreen: React.FC = () => {
         </Section>
 
         <Text variant="caption" tone="tertiary" style={{ textAlign: 'center' }}>
-          Rules that the app cannot read are shown in full so they can still be applied by the
-          crew. Nothing on this screen blocks submission.
+          {optional} of {fields.length} fields are optional or calculated. Rules the app cannot
+          read are shown in full so the crew can still apply them. Nothing on this screen blocks
+          submission.
         </Text>
       </Screen>
     );

@@ -1,12 +1,12 @@
 import { z } from 'zod';
 import { ulid } from 'ulid';
+import type { Observation } from '@prehospital-epr/core';
 import {
-  Observation,
   Condition,
   Encounter,
   Patient,
   CodeableConcept,
-  Quantity
+  Quantity,
 } from '@prehospital-epr/core';
 
 export const TriageSystemSchema = z.enum([

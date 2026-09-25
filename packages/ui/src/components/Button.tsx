@@ -1,10 +1,10 @@
 import React from 'react';
+import type { ViewStyle } from 'react-native';
 import {
   ActivityIndicator,
   Pressable,
   StyleSheet,
   View,
-  ViewStyle,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../theme-context';

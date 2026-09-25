@@ -72,11 +72,61 @@ describe('field requirements', () => {
     expect(ami01.requirementProse).toMatch(/mandatory/i);
   });
 
+  it('separates an unconditional mandate from a conditional one', () => {
+    const all = modules.flatMap(module => describeQualityIndicatorFields(module));
+    // "Mandatory field." - required outright.
+    const plain = all.find(field => field.mandatory && !field.conditionallyRequired)!;
+    expect(plain.validation).toMatch(/\bmandatory\b/i);
+    expect(plain.requiredWhen).toBeNull();
+
+    // "Mandatory field if ..." - required, but only under a condition.
+    const conditional = all.find(field => field.mandatory && field.conditionallyRequired)!;
+    expect(conditional.validation).toMatch(/mandatory field if/i);
+    expect(conditional.requiredWhen).not.toBeNull();
+  });
+
+  it('does not report an optional field as mandatory because it says "becomes mandatory"', () => {
+    // REA-06: "Optional field, becomes mandatory if MGT-02 contains any
+    // Pharm_* option ...". A substring test for "mandatory" would call this
+    // unconditionally required, contradicting the document.
+    const pain = getQualityIndicatorModule('pain-management')!;
+    const rea06 = describeQualityIndicatorFields(pain).find(f => f.id === 'REA-06')!;
+    expect(rea06.validation).toMatch(/^Optional field/i);
+    expect(rea06.mandatory).toBe(false);
+    expect(rea06.conditionallyRequired).toBe(true);
+    expect(rea06.requirementProse).toMatch(/becomes mandatory/i);
+  });
+
+  it('treats a "Conditional." field as conditionally, not optionally, required', () => {
+    const conditional = modules
+      .flatMap(module => describeQualityIndicatorFields(module))
+      .filter(field => /^Conditional\b/i.test(field.validation));
+    expect(conditional.length).toBeGreaterThan(0);
+    for (const field of conditional) {
+      expect(field.mandatory).toBe(false);
+      expect(field.conditionallyRequired).toBe(true);
+    }
+  });
+
+  it('never marks a field mandatory when the document opens with "Optional"', () => {
+    for (const module of modules) {
+      for (const field of describeQualityIndicatorFields(module)) {
+        if (/^Optional\b/i.test(field.validation)) {
+          expect({ id: field.id, mandatory: field.mandatory }).toEqual({
+            id: field.id,
+            mandatory: false,
+          });
+        }
+      }
+    }
+  });
+
   it('does not invent a requirement for a calculated field', () => {
     const ami = getQualityIndicatorModule('ami')!;
     // "Calculated field. Values >10 minutes trigger a soft warning ..."
     const ami05 = describeQualityIndicatorFields(ami).find(f => f.id === 'AMI-05')!;
     expect(ami05.mandatory).toBe(false);
+    expect(ami05.conditionallyRequired).toBe(false);
     expect(ami05.requiredWhen).toBeNull();
   });
 

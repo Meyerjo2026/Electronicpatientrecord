@@ -20,7 +20,7 @@ import {
   validatePatientReportFormData,
   type FormElementConfig,
 } from '@prehospital-epr/nemsis';
-import { AppDispatch, RootState } from '../store';
+import type { AppDispatch, RootState } from '../store';
 import { createEncounter, setActiveEncounter, setCurrentEncounter } from '../store/encounterSlice';
 import { createPatient, setCurrentPatient } from '../store/patientSlice';
 import { demographicsFrom, type FormData } from '../utils/nemsis-demographics';
