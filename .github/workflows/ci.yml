@@ -33,11 +33,14 @@ jobs:
       - name: Install dependencies
         run: npm ci --include=dev
 
-      - name: Typecheck
-        run: npm run typecheck $PACKAGES
-
+      # Build before typechecking: the packages resolve each other through their
+      # published `dist` entrypoints, and `dist` is git-ignored, so a fresh
+      # checkout has nothing to resolve until core/fhir are compiled.
       - name: Build packages
         run: npm run build $PACKAGES
+
+      - name: Typecheck
+        run: npm run typecheck $PACKAGES
 
       - name: Run unit tests
         run: npm test $PACKAGES
