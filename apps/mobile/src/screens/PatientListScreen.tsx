@@ -1,634 +1,416 @@
-import React from 'react';
-import {
-  FlatList,
-  KeyboardAvoidingView,
-  Modal,
-  Platform,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
-} from 'react-native';
+import React, { useCallback, useState } from 'react';
+import { FlatList, Modal, Pressable, TextInput, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useDispatch, useSelector } from 'react-redux';
-import { RootState, AppDispatch } from '../store';
-import { searchPatients, createPatient, setCurrentPatient } from '../store/patientSlice';
-import { setCurrentEncounter } from '../store/encounterSlice';
-import { colors, spacing, typography, borderRadius, shadows, layout } from '../theme';
+import {
+  Badge,
+  Button,
+  Card,
+  Divider,
+  EmptyState,
+  IconButton,
+  SegmentedControl,
+  Text,
+  TextField,
+  useTheme,
+  type Tone,
+} from '@prehospital-epr/ui';
+import { AppDispatch, RootState } from '../store';
+import { clearSearchResults, createPatient, searchPatients, setCurrentPatient } from '../store/patientSlice';
+import { createEncounter } from '../store/encounterSlice';
+import {
+  patientAgeLabel,
+  patientDisplayName,
+  patientInitials,
+  patientMrn,
+  patientPhone,
+} from '../utils/format';
+
+const GENDERS = [
+  { value: 'female', label: 'Female' },
+  { value: 'male', label: 'Male' },
+  { value: 'other', label: 'Other' },
+  { value: 'unknown', label: 'Unknown' },
+] as const;
+
+type Gender = (typeof GENDERS)[number]['value'];
+
+const GENDER_TONES: Record<Gender, Tone> = {
+  female: 'critical',
+  male: 'primary',
+  other: 'info',
+  unknown: 'neutral',
+};
+
+interface DraftPatient {
+  firstName: string;
+  lastName: string;
+  birthDate: string;
+  gender: Gender;
+  phone: string;
+}
+
+const EMPTY_DRAFT: DraftPatient = {
+  firstName: '',
+  lastName: '',
+  birthDate: '',
+  gender: 'unknown',
+  phone: '',
+};
 
 export const PatientListScreen: React.FC = () => {
+  const theme = useTheme();
   const dispatch = useDispatch<AppDispatch>();
-  const { patients, searchResults, isLoading, lastSearchParams } = useSelector((state: RootState) => state.patient);
-  const { currentEncounter } = useSelector((state: RootState) => state.encounter);
 
-  const [query, setQuery] = React.useState('');
-  const [showCreateModal, setShowCreateModal] = React.useState(false);
-  const [newPatient, setNewPatient] = React.useState({
-    firstName: '',
-    lastName: '',
-    dob: '',
-    gender: 'unknown',
-    phone: '',
-  });
+  const { patients, searchResults, lastSearchParams, isLoading } = useSelector(
+    (state: RootState) => state.patient
+  );
 
-  const handleSearch = () => {
-    if (query.trim()) {
-      dispatch(searchPatients({ name: query }));
+  const [query, setQuery] = useState('');
+  const [sheetOpen, setSheetOpen] = useState(false);
+  const [draft, setDraft] = useState<DraftPatient>(EMPTY_DRAFT);
+  const [formError, setFormError] = useState<string | undefined>();
+
+  const isSearching = lastSearchParams !== null;
+  const visible = isSearching ? searchResults : patients;
+
+  const handleSearch = useCallback(() => {
+    dispatch(searchPatients({ name: query.trim() }));
+  }, [dispatch, query]);
+
+  const handleClear = useCallback(() => {
+    setQuery('');
+    dispatch(clearSearchResults());
+  }, [dispatch]);
+
+  const canCreate = draft.firstName.trim().length > 0 || draft.lastName.trim().length > 0;
+
+  const handleCreate = useCallback(async () => {
+    if (!canCreate) {
+      setFormError('Enter at least a first or last name.');
+      return;
     }
-  };
+    if (draft.birthDate && Number.isNaN(Date.parse(draft.birthDate))) {
+      setFormError('Date of birth must be formatted YYYY-MM-DD.');
+      return;
+    }
 
-  const handleCreatePatient = async () => {
-    try {
-      const patientData = {
-        id: '',
-        resourceType: 'Patient' as const,
-        name: [{
-          given: [newPatient.firstName],
-          family: newPatient.lastName,
-        }],
-        gender: newPatient.gender as any,
-        birthDate: newPatient.dob || undefined,
-        telecom: newPatient.phone ? [{
-          system: 'phone' as const,
-          value: newPatient.phone,
-          use: 'mobile' as const,
-        }] : undefined,
-      };
+    const result = await dispatch(
+      createPatient({
+        name: [
+          {
+            family: draft.lastName.trim() || undefined,
+            given: draft.firstName.trim() ? [draft.firstName.trim()] : undefined,
+            text: [draft.firstName.trim(), draft.lastName.trim()]
+              .filter(Boolean)
+              .join(' ')
+              .trim(),
+          },
+        ],
+        gender: draft.gender,
+        birthDate: draft.birthDate || undefined,
+        telecom: draft.phone.trim()
+          ? [{ system: 'phone', value: draft.phone.trim() }]
+          : undefined,
+      })
+    );
 
-      const result = await dispatch(createPatient(patientData)).unwrap();
-      dispatch(setCurrentPatient(result));
+    if (createPatient.fulfilled.match(result)) {
+      setDraft(EMPTY_DRAFT);
+      setFormError(undefined);
+      setSheetOpen(false);
+      // A patient record is only useful attached to a job, so open one.
+      await dispatch(
+        createEncounter({
+          status: 'planned',
+          class: 'emergency',
+          subject: { reference: `Patient/${result.payload.id}` },
+          period: { start: new Date().toISOString() },
+        })
+      );
+    }
+  }, [dispatch, canCreate, draft]);
 
-      if (currentEncounter) {
-        dispatch(setCurrentEncounter({
-          ...currentEncounter,
-          subject: { reference: `Patient/${result.id}`, display: `${result.name?.[0]?.given?.[0]} ${result.name?.[0]?.family}` },
-        }));
-      }
+  const renderItem = useCallback(
+    ({ item }: { item: (typeof patients)[number] }) => {
+      const gender = (item.gender ?? 'unknown') as Gender;
+      const mrn = patientMrn(item);
+      const phone = patientPhone(item);
 
-      setShowCreateModal(false);
-      setNewPatient({ firstName: '', lastName: '', dob: '', gender: 'unknown', phone: '' });
-    } catch {}
-  };
-
-  const displayPatients = lastSearchParams ? searchResults : patients;
-
-  return (
-    <View style={styles.container}>
-      <View style={styles.page}>
-        <View style={styles.pageHeader}>
-          <View>
-            <Text style={styles.pageTitle}>Patients</Text>
-            <Text style={styles.pageSubtitle}>
-              {isLoading ? 'Searching…' : `${displayPatients.length} ${displayPatients.length === 1 ? 'patient' : 'patients'}`}
-            </Text>
-          </View>
-          <TouchableOpacity
-            style={styles.createButton}
-            onPress={() => setShowCreateModal(true)}
+      return (
+        <Pressable
+          onPress={() => dispatch(setCurrentPatient(item))}
+          accessibilityRole="button"
+          accessibilityLabel={`Open ${patientDisplayName(item)}`}
+          style={({ pressed }) => ({
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: theme.spacing.lg,
+            padding: theme.spacing.lg,
+            backgroundColor: pressed ? theme.colors.fill : 'transparent',
+          })}
+        >
+          <View
+            style={{
+              width: 44,
+              height: 44,
+              alignItems: 'center',
+              justifyContent: 'center',
+              borderRadius: theme.borderRadius.md,
+              backgroundColor:
+                gender === 'female'
+                  ? theme.colors.femaleSurface
+                  : gender === 'male'
+                    ? theme.colors.maleSurface
+                    : theme.colors.surfaceSunken,
+            }}
           >
-            <Ionicons name="add" size={20} color={colors.primary} />
-            <Text style={styles.createButtonText}>New Patient</Text>
-          </TouchableOpacity>
-        </View>
-
-        <View style={styles.searchBar}>
-          <Ionicons name="search" size={20} color={colors.textTertiary} />
-          <TextInput
-            style={styles.searchInput}
-            placeholder="Search by name, ID, or phone"
-            value={query}
-            onChangeText={setQuery}
-            onSubmitEditing={handleSearch}
-            placeholderTextColor={colors.textTertiary}
-            returnKeyType="search"
-          />
-          {query.length > 0 && (
-            <TouchableOpacity style={styles.clearButton} onPress={() => setQuery('')}>
-              <Ionicons name="close-circle" size={20} color={colors.textTertiary} />
-            </TouchableOpacity>
-          )}
-          <TouchableOpacity style={styles.searchButton} onPress={handleSearch}>
-            <Ionicons name="arrow-forward" size={20} color={colors.textInverse} />
-          </TouchableOpacity>
-        </View>
-
-        <FlatList
-          style={styles.patientList}
-          contentContainerStyle={styles.patientListContent}
-          data={displayPatients}
-          keyExtractor={item => item.id}
-          keyboardShouldPersistTaps="handled"
-          renderItem={({ item }) => (
-            <TouchableOpacity
-              style={styles.patientRow}
-              onPress={() => {
-                dispatch(setCurrentPatient(item));
-                if (currentEncounter) {
-                  dispatch(setCurrentEncounter({
-                    ...currentEncounter,
-                    subject: { reference: `Patient/${item.id}`, display: `${item.name?.[0]?.given?.[0]} ${item.name?.[0]?.family}` },
-                  }));
-                }
+            <Text
+              variant="subheading"
+              style={{
+                color:
+                  gender === 'female'
+                    ? theme.colors.female
+                    : gender === 'male'
+                      ? theme.colors.male
+                      : theme.colors.textSecondary,
               }}
             >
-              <View style={styles.patientAvatar}>
-                <Text style={styles.patientInitials}>
-                  {item.name?.[0]?.given?.[0]?.[0] || ''}{item.name?.[0]?.family?.[0] || ''}
-                </Text>
-              </View>
-              <View style={styles.patientInfo}>
-                <View style={styles.patientNameRow}>
-                  <Text style={styles.patientName}>
-                    {item.name?.[0]?.given?.[0] || ''} {item.name?.[0]?.family || ''}
-                  </Text>
-                  {item.gender && (
-                    <View
-                      style={[
-                        styles.genderBadge,
-                        {
-                          backgroundColor: item.gender === 'male'
-                            ? colors.maleLight
-                            : item.gender === 'female'
-                              ? colors.femaleLight
-                              : colors.fill,
-                        },
-                      ]}
-                    >
-                      <Text
-                        style={[
-                          styles.genderBadgeText,
-                          {
-                            color: item.gender === 'male'
-                              ? colors.male
-                              : item.gender === 'female'
-                                ? colors.female
-                                : colors.textTertiary,
-                          },
-                        ]}
-                      >
-                        {item.gender.charAt(0).toUpperCase()}
-                      </Text>
-                    </View>
-                  )}
-                </View>
-                <View style={styles.patientDetails}>
-                  {item.birthDate && (
-                    <Text style={styles.patientDetail}>
-                      DOB {new Date(item.birthDate).toLocaleDateString()} · {calculateAge(item.birthDate)} yrs
-                    </Text>
-                  )}
-                  {item.telecom?.[0]?.value && (
-                    <Text style={styles.patientDetail}>{item.telecom[0].value}</Text>
-                  )}
-                  {item.identifier?.[0]?.value && (
-                    <Text style={styles.patientDetail}>MRN {item.identifier[0].value}</Text>
-                  )}
-                </View>
-              </View>
-              <Ionicons name="chevron-forward" size={18} color={colors.textTertiary} />
-            </TouchableOpacity>
-          )}
-          ItemSeparatorComponent={() => <View style={styles.separator} />}
-          ListEmptyComponent={
-            <View style={styles.emptyState}>
-              <View style={styles.emptyIcon}>
-                <Ionicons name="people-outline" size={28} color={colors.primary} />
-              </View>
-              <Text style={styles.emptyTitle}>
-                {query ? 'No patients found' : 'No patients yet'}
-              </Text>
-              <Text style={styles.emptyText}>
-                {query ? 'Try a different name, ID, or phone number.' : 'Create a patient record to get started.'}
-              </Text>
-              {!query && (
-                <TouchableOpacity style={styles.emptyButton} onPress={() => setShowCreateModal(true)}>
-                  <Text style={styles.emptyButtonText}>Create First Patient</Text>
-                </TouchableOpacity>
-              )}
-            </View>
-          }
+              {patientInitials(item)}
+            </Text>
+          </View>
+
+          <View style={{ flex: 1, gap: 2 }}>
+            <Text variant="subheading" numberOfLines={1}>
+              {patientDisplayName(item)}
+            </Text>
+            <Text variant="caption" tone="tertiary" numberOfLines={1}>
+              {[patientAgeLabel(item), mrn, phone].filter(Boolean).join(' · ')}
+            </Text>
+          </View>
+
+          <Badge label={gender} tone={GENDER_TONES[gender]} />
+        </Pressable>
+      );
+    },
+    [dispatch, theme]
+  );
+
+  const header = (
+    <View style={{ gap: theme.spacing.lg }}>
+      <View
+        style={{
+          flexDirection: 'row',
+          alignItems: 'center',
+          gap: theme.spacing.sm,
+        }}
+      >
+        <View style={{ flex: 1 }}>
+          <Text variant="title" accessibilityRole="header">
+            Patients
+          </Text>
+          <Text variant="subheading" tone="tertiary">
+            {isSearching
+              ? `${visible.length} matching on this device`
+              : `${patients.length} on this device`}
+          </Text>
+        </View>
+        <Button
+          label="New"
+          icon="add"
+          size="sm"
+          onPress={() => {
+            setDraft(EMPTY_DRAFT);
+            setFormError(undefined);
+            setSheetOpen(true);
+          }}
         />
       </View>
 
-      <Modal visible={showCreateModal} animationType="slide" transparent>
-        <KeyboardAvoidingView
-          style={styles.modalOverlay}
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        >
-          <View style={styles.modalContainer}>
-            <View style={styles.modalHandle} />
-            <View style={styles.modalHeader}>
-              <View>
-                <Text style={styles.modalTitle}>New Patient</Text>
-                <Text style={styles.modalSubtitle}>Add the patient’s identifying details</Text>
-              </View>
-              <TouchableOpacity style={styles.closeButton} onPress={() => setShowCreateModal(false)}>
-                <Ionicons name="close" size={22} color={colors.textSecondary} />
-              </TouchableOpacity>
-            </View>
+      <View
+        style={{
+          flexDirection: 'row',
+          alignItems: 'center',
+          gap: theme.spacing.sm,
+          paddingHorizontal: theme.spacing.md,
+          minHeight: theme.layout.controlHeight,
+          borderRadius: theme.borderRadius.md,
+          backgroundColor: theme.colors.surfaceSunken,
+          borderWidth: 1,
+          borderColor: theme.colors.border,
+        }}
+      >
+        <Ionicons name="search" size={17} color={theme.colors.textTertiary} />
+        <TextInput
+          value={query}
+          onChangeText={setQuery}
+          placeholder="Search by name"
+          placeholderTextColor={theme.colors.textTertiary}
+          autoCapitalize="none"
+          autoCorrect={false}
+          returnKeyType="search"
+          onSubmitEditing={handleSearch}
+          accessibilityLabel="Search patients by name"
+          style={{
+            flex: 1,
+            color: theme.colors.textPrimary,
+            fontFamily: theme.typography.systemFont,
+            fontSize: theme.typography.sizes.md,
+            paddingVertical: theme.spacing.sm,
+          }}
+        />
+        {query ? (
+          <IconButton icon="close-circle" label="Clear search" size={17} onPress={handleClear} />
+        ) : null}
+      </View>
+    </View>
+  );
 
-            <ScrollView
-              style={styles.modalContent}
-              contentContainerStyle={styles.modalContentInner}
-              keyboardShouldPersistTaps="handled"
-            >
-              <View style={styles.formGroup}>
-                <Text style={styles.formLabel}>First Name *</Text>
-                <TextInput
-                  style={styles.formInput}
-                  value={newPatient.firstName}
-                  onChangeText={text => setNewPatient({ ...newPatient, firstName: text })}
-                  placeholder="First name"
-                  placeholderTextColor={colors.textTertiary}
-                />
-              </View>
-              <View style={styles.formGroup}>
-                <Text style={styles.formLabel}>Last Name *</Text>
-                <TextInput
-                  style={styles.formInput}
-                  value={newPatient.lastName}
-                  onChangeText={text => setNewPatient({ ...newPatient, lastName: text })}
-                  placeholder="Last name"
-                  placeholderTextColor={colors.textTertiary}
-                />
-              </View>
-              <View style={styles.formRow}>
-                <View style={styles.formGroupHalf}>
-                  <Text style={styles.formLabel}>Date of Birth</Text>
-                  <TextInput
-                    style={styles.formInput}
-                    value={newPatient.dob}
-                    onChangeText={text => setNewPatient({ ...newPatient, dob: text })}
-                    placeholder="YYYY-MM-DD"
-                    placeholderTextColor={colors.textTertiary}
-                    keyboardType="numbers-and-punctuation"
-                  />
-                </View>
-                <View style={styles.formGroupHalf}>
-                  <Text style={styles.formLabel}>Gender</Text>
-                  <TextInput
-                    style={styles.formInput}
-                    value={newPatient.gender}
-                    onChangeText={text => setNewPatient({ ...newPatient, gender: text })}
-                    placeholder="Unknown"
-                    placeholderTextColor={colors.textTertiary}
-                    autoCapitalize="none"
-                  />
-                </View>
-              </View>
-              <View style={styles.formGroup}>
-                <Text style={styles.formLabel}>Phone</Text>
-                <TextInput
-                  style={styles.formInput}
-                  value={newPatient.phone}
-                  onChangeText={text => setNewPatient({ ...newPatient, phone: text })}
-                  placeholder="+1 (555) 123-4567"
-                  placeholderTextColor={colors.textTertiary}
-                  keyboardType="phone-pad"
-                />
-              </View>
-            </ScrollView>
+  return (
+    <View style={{ flex: 1, backgroundColor: theme.colors.background }}>
+      <FlatList
+        data={visible}
+        keyExtractor={item => item.id}
+        renderItem={renderItem}
+        ListHeaderComponent={header}
+        ItemSeparatorComponent={() => <Divider inset={theme.spacing.lg + 44} />}
+        contentContainerStyle={{
+          width: '100%',
+          maxWidth: theme.layout.contentMaxWidth,
+          alignSelf: 'center',
+          paddingHorizontal: theme.spacing.lg,
+          paddingTop: theme.spacing.lg,
+          paddingBottom: theme.layout.tabBarClearance + theme.spacing.lg,
+          gap: theme.spacing.lg,
+        }}
+        keyboardShouldPersistTaps="handled"
+        ListEmptyComponent={
+          <Card>
+            <EmptyState
+              icon={isSearching ? 'search-outline' : 'people-outline'}
+              title={isSearching ? 'No matches' : 'No patients yet'}
+              message={
+                isSearching
+                  ? 'Search covers patients stored on this device. Records held on the server are not yet searchable offline.'
+                  : 'Create a patient to start an encounter. Everything is stored locally first.'
+              }
+              action={
+                isSearching
+                  ? { label: 'Clear search', onPress: handleClear }
+                  : { label: 'New patient', onPress: () => setSheetOpen(true) }
+              }
+            />
+          </Card>
+        }
+      />
 
-            <View style={styles.modalActions}>
-              <TouchableOpacity style={styles.modalCancel} onPress={() => setShowCreateModal(false)}>
-                <Text style={styles.modalCancelText}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[
-                  styles.modalConfirm,
-                  (!newPatient.firstName || !newPatient.lastName) && styles.modalConfirmDisabled,
-                ]}
-                onPress={handleCreatePatient}
-                disabled={!newPatient.firstName || !newPatient.lastName}
-              >
-                <Text style={styles.modalConfirmText}>Create Patient</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </KeyboardAvoidingView>
-      </Modal>
+      <NewPatientSheet
+        open={sheetOpen}
+        draft={draft}
+        error={formError}
+        busy={isLoading}
+        onChange={setDraft}
+        onClose={() => setSheetOpen(false)}
+        onSubmit={handleCreate}
+      />
     </View>
   );
 };
 
-function calculateAge(dob: string): number {
-  const today = new Date();
-  const birth = new Date(dob);
-  let age = today.getFullYear() - birth.getFullYear();
-  const monthDiff = today.getMonth() - birth.getMonth();
-  if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birth.getDate())) {
-    age--;
-  }
-  return age;
+interface SheetProps {
+  open: boolean;
+  draft: DraftPatient;
+  error?: string;
+  busy: boolean;
+  onChange: (draft: DraftPatient) => void;
+  onClose: () => void;
+  onSubmit: () => void;
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: colors.background,
-  },
-  page: {
-    flex: 1,
-    width: '100%',
-    maxWidth: layout.contentMaxWidth,
-    alignSelf: 'center',
-  },
-  pageHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.xl,
-    paddingBottom: spacing.md,
-  },
-  pageTitle: {
-    ...typography.styles.largeTitle,
-    color: colors.textPrimary,
-  },
-  pageSubtitle: {
-    ...typography.styles.subheadline,
-    color: colors.textSecondary,
-    marginTop: spacing.xxs,
-  },
-  createButton: {
-    minHeight: 44,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.xs,
-    paddingHorizontal: spacing.md,
-    borderRadius: borderRadius.full,
-    backgroundColor: colors.primaryLight,
-  },
-  createButtonText: {
-    ...typography.styles.subheadline,
-    color: colors.primary,
-    fontWeight: '600',
-  },
-  pressed: {
-    opacity: 0.68,
-  },
-  searchBar: {
-    minHeight: 50,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-    marginHorizontal: spacing.lg,
-    marginBottom: spacing.md,
-    paddingLeft: spacing.md,
-    paddingRight: spacing.xs,
-    borderRadius: borderRadius.md,
-    backgroundColor: colors.fill,
-  },
-  searchInput: {
-    flex: 1,
-    height: layout.controlHeight,
-    color: colors.textPrimary,
-    fontFamily: typography.systemFont,
-    fontSize: typography.sizes.md,
-  },
-  clearButton: {
-    width: 36,
-    height: 44,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  searchButton: {
-    width: 42,
-    height: 42,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: borderRadius.sm,
-    backgroundColor: colors.primary,
-  },
-  patientList: {
-    flex: 1,
-    marginHorizontal: spacing.lg,
-    overflow: 'hidden',
-    borderRadius: borderRadius.lg,
-    backgroundColor: colors.surface,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.border,
-  },
-  patientListContent: {
-    flexGrow: 1,
-    paddingBottom: layout.tabBarHeight + spacing.xl,
-  },
-  patientRow: {
-    minHeight: 76,
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.md,
-    backgroundColor: colors.surface,
-  },
-  patientAvatar: {
-    width: 44,
-    height: 44,
-    borderRadius: borderRadius.full,
-    backgroundColor: colors.primaryLight,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: spacing.md,
-  },
-  patientInitials: {
-    ...typography.styles.headline,
-    color: colors.primary,
-  },
-  patientInfo: {
-    flex: 1,
-    minWidth: 0,
-  },
-  patientNameRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  patientName: {
-    ...typography.styles.headline,
-    color: colors.textPrimary,
-    flexShrink: 1,
-  },
-  genderBadge: {
-    minWidth: 24,
-    alignItems: 'center',
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 2,
-    borderRadius: borderRadius.full,
-    marginLeft: spacing.sm,
-  },
-  genderBadgeText: {
-    ...typography.styles.caption2,
-    fontWeight: '700',
-  },
-  patientDetails: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: spacing.sm,
-    marginTop: spacing.xs,
-  },
-  patientDetail: {
-    ...typography.styles.caption,
-    color: colors.textSecondary,
-  },
-  separator: {
-    height: StyleSheet.hairlineWidth,
-    marginLeft: 76,
-    backgroundColor: colors.separator,
-  },
-  emptyState: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: spacing.xl,
-    paddingVertical: spacing.xxl,
-  },
-  emptyIcon: {
-    width: 56,
-    height: 56,
-    borderRadius: borderRadius.lg,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: colors.primaryLight,
-  },
-  emptyTitle: {
-    ...typography.styles.headline,
-    color: colors.textPrimary,
-    marginTop: spacing.md,
-  },
-  emptyText: {
-    ...typography.styles.subheadline,
-    color: colors.textSecondary,
-    textAlign: 'center',
-    marginTop: spacing.xs,
-  },
-  emptyButton: {
-    minHeight: 44,
-    justifyContent: 'center',
-    paddingHorizontal: spacing.lg,
-    marginTop: spacing.md,
-    borderRadius: borderRadius.md,
-    backgroundColor: colors.primary,
-  },
-  emptyButtonText: {
-    ...typography.styles.subheadline,
-    color: colors.textInverse,
-    fontWeight: '600',
-  },
-  modalOverlay: {
-    flex: 1,
-    justifyContent: 'flex-end',
-    backgroundColor: colors.scrim,
-  },
-  modalContainer: {
-    width: '100%',
-    maxWidth: 620,
-    maxHeight: '94%',
-    alignSelf: 'center',
-    backgroundColor: colors.surface,
-    borderTopLeftRadius: borderRadius.xl,
-    borderTopRightRadius: borderRadius.xl,
-    ...shadows.xl,
-  },
-  modalHandle: {
-    width: 36,
-    height: 5,
-    alignSelf: 'center',
-    borderRadius: borderRadius.full,
-    backgroundColor: colors.disabled,
-    marginTop: spacing.sm,
-  },
-  modalHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.md,
-    paddingBottom: spacing.md,
-  },
-  modalTitle: {
-    ...typography.styles.title2,
-    color: colors.textPrimary,
-  },
-  modalSubtitle: {
-    ...typography.styles.footnote,
-    color: colors.textSecondary,
-    marginTop: 2,
-  },
-  closeButton: {
-    width: 44,
-    height: 44,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: borderRadius.full,
-    backgroundColor: colors.fill,
-  },
-  modalContent: {
-    flexGrow: 0,
-  },
-  modalContentInner: {
-    paddingHorizontal: spacing.lg,
-    paddingBottom: spacing.lg,
-  },
-  formGroup: {
-    marginBottom: spacing.md,
-  },
-  formRow: {
-    flexDirection: 'row',
-    gap: spacing.md,
-  },
-  formGroupHalf: {
-    flex: 1,
-  },
-  formLabel: {
-    ...typography.styles.footnote,
-    color: colors.textSecondary,
-    fontWeight: '600',
-    marginBottom: spacing.xs,
-    marginLeft: spacing.xxs,
-  },
-  formInput: {
-    minHeight: layout.controlHeight,
-    paddingHorizontal: spacing.md,
-    borderRadius: borderRadius.md,
-    backgroundColor: colors.fill,
-    color: colors.textPrimary,
-    fontFamily: typography.systemFont,
-    fontSize: typography.sizes.md,
-  },
-  modalActions: {
-    flexDirection: 'row',
-    gap: spacing.sm,
-    padding: spacing.lg,
-    paddingTop: spacing.md,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: colors.separator,
-  },
-  modalCancel: {
-    flex: 1,
-    minHeight: 48,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: borderRadius.md,
-    backgroundColor: colors.fill,
-  },
-  modalCancelText: {
-    ...typography.styles.headline,
-    color: colors.textSecondary,
-  },
-  modalConfirm: {
-    flex: 1.4,
-    minHeight: 48,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: borderRadius.md,
-    backgroundColor: colors.primary,
-  },
-  modalConfirmDisabled: {
-    backgroundColor: colors.disabled,
-  },
-  modalConfirmText: {
-    ...typography.styles.headline,
-    color: colors.textInverse,
-  },
-});
+const NewPatientSheet: React.FC<SheetProps> = ({
+  open,
+  draft,
+  error,
+  busy,
+  onChange,
+  onClose,
+  onSubmit,
+}) => {
+  const theme = useTheme();
+
+  return (
+    <Modal visible={open} transparent animationType="slide" onRequestClose={onClose}>
+      <View style={{ flex: 1, backgroundColor: theme.colors.scrim, justifyContent: 'flex-end' }}>
+        <Pressable style={{ flex: 1 }} onPress={onClose} accessibilityLabel="Dismiss" />
+        <View
+          style={{
+            backgroundColor: theme.colors.surface,
+            borderTopLeftRadius: theme.borderRadius.xl,
+            borderTopRightRadius: theme.borderRadius.xl,
+            padding: theme.spacing.lg,
+            gap: theme.spacing.lg,
+            maxHeight: '90%',
+          }}
+        >
+          <View
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+            }}
+          >
+            <Text variant="heading">New patient</Text>
+            <IconButton icon="close" label="Close" onPress={onClose} />
+          </View>
+
+          <View style={{ flex: 1 }}>
+            <View style={{ flexDirection: 'row', gap: theme.spacing.md }}>
+              <View style={{ flex: 1 }}>
+                <TextField
+                  label="First name"
+                  value={draft.firstName}
+                  onChangeText={firstName => onChange({ ...draft, firstName })}
+                  autoCapitalize="words"
+                />
+              </View>
+              <View style={{ flex: 1 }}>
+                <TextField
+                  label="Last name"
+                  value={draft.lastName}
+                  onChangeText={lastName => onChange({ ...draft, lastName })}
+                  autoCapitalize="words"
+                />
+              </View>
+            </View>
+
+            <TextField
+              label="Date of birth"
+              help="YYYY-MM-DD"
+              value={draft.birthDate}
+              onChangeText={birthDate => onChange({ ...draft, birthDate })}
+              keyboardType="numbers-and-punctuation"
+              error={error}
+            />
+
+            <TextField
+              label="Phone"
+              value={draft.phone}
+              onChangeText={phone => onChange({ ...draft, phone })}
+              keyboardType="phone-pad"
+              placeholder="+27 …"
+            />
+
+            <SegmentedControl
+              label="Sex"
+              value={draft.gender}
+              options={GENDERS.map(g => ({ value: g.value, label: g.label }))}
+              onChange={gender => onChange({ ...draft, gender })}
+            />
+          </View>
+
+          <Button label="Create and start encounter" onPress={onSubmit} loading={busy} fullWidth size="lg" />
+        </View>
+      </View>
+    </Modal>
+  );
+};

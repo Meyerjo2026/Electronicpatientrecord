@@ -5,6 +5,7 @@ import authReducer from './authSlice';
 import patientReducer from './patientSlice';
 import encounterReducer from './encounterSlice';
 import observationReducer from './observationSlice';
+import interventionReducer from './interventionSlice';
 import syncReducer from './syncSlice';
 import uiReducer from './uiSlice';
 
@@ -13,6 +14,7 @@ const rootReducer = combineReducers({
   patient: patientReducer,
   encounter: encounterReducer,
   observation: observationReducer,
+  intervention: interventionReducer,
   sync: syncReducer,
   ui: uiReducer,
 });
@@ -21,7 +23,9 @@ const persistConfig = {
   key: 'prehospital-epr',
   version: 1,
   storage: AsyncStorage,
-  whitelist: ['auth', 'patient', 'encounter', 'observation', 'ui'],
+  // `sync` is transient by design: connectivity and counters are re-derived on
+  // launch rather than restored from a stale snapshot.
+  whitelist: ['auth', 'patient', 'encounter', 'observation', 'intervention', 'ui'],
   blacklist: ['sync'],
 };
 

@@ -46,6 +46,12 @@ export const RouteSchema = z.enum([
   'TRANSDERMAL'
 ]);
 
+export type Route = z.infer<typeof RouteSchema>;
+
+export type MedicationAdministrationCategory = z.infer<
+  typeof MedicationAdministrationCategorySchema
+>;
+
 export const DoseRateSchema = z.object({
   value: z.number(),
   unit: z.string(),
@@ -174,6 +180,8 @@ export const ProcedureCategorySchema = z.enum([
   'wound-care',
   'other'
 ]);
+
+export type ProcedureCategory = z.infer<typeof ProcedureCategorySchema>;
 
 export const ProcedureSchema = BaseResourceSchema.extend({
   resourceType: z.literal('Procedure'),

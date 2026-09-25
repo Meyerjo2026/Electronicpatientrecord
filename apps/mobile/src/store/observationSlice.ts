@@ -1,5 +1,5 @@
 import { createSlice, createAsyncThunk, PayloadAction } from '@reduxjs/toolkit';
-import { Observation, ObservationCreate, VitalSignsSet, ObservationSearchParams } from '@prehospital-epr/core';
+import { Observation, ObservationCreate, VitalSignsSet } from '@prehospital-epr/core';
 import { ulid } from 'ulid';
 
 type VitalSignsRecord = VitalSignsSet & { id?: string };
@@ -54,13 +54,30 @@ export const recordObservation = createAsyncThunk(
   }
 );
 
+/**
+ * Placeholder for a query against the FHIR API scoped to one encounter.
+ *
+ * The reducer deliberately appends rather than replaces, and dedupes on id, so
+ * that locally captured observations survive a refresh. Once the API returns
+ * server records this merges them with anything recorded in the field.
+ */
 export const loadVitalSignsForEncounter = createAsyncThunk(
   'observation/loadForEncounter',
-  async (encounterId: string, { rejectWithValue }) => {
+  async (encounterId: string) => {
     await new Promise(resolve => setTimeout(resolve, 100));
+    void encounterId;
     return { vitalSigns: [] as VitalSignsRecord[], observations: [] as Observation[] };
   }
 );
+
+const mergeById = <T extends { id?: string; timestamp?: string }>(
+  existing: T[],
+  incoming: T[]
+): T[] => {
+  const seen = new Set(existing.map(item => item.id ?? item.timestamp));
+  const fresh = incoming.filter(item => !seen.has(item.id ?? item.timestamp));
+  return [...fresh, ...existing];
+};
 
 export const startAutoCapture = createAsyncThunk(
   'observation/startAutoCapture',
@@ -128,10 +145,10 @@ const observationSlice = createSlice({
         state.observations.unshift(action.payload);
       })
       .addCase(loadVitalSignsForEncounter.fulfilled, (state, action) => {
-        state.vitalSigns = action.payload.vitalSigns;
-        state.observations = action.payload.observations;
-        if (action.payload.vitalSigns.length > 0) {
-          state.currentVitalSigns = action.payload.vitalSigns[0];
+        state.vitalSigns = mergeById(state.vitalSigns, action.payload.vitalSigns);
+        state.observations = mergeById(state.observations, action.payload.observations);
+        if (state.vitalSigns.length > 0) {
+          state.currentVitalSigns = state.vitalSigns[0];
         }
       })
       .addCase(startAutoCapture.fulfilled, (state, action) => {

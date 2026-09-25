@@ -1,214 +1,263 @@
-import React from 'react';
-import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
-import { colors, spacing, typography, borderRadius, shadows, layout } from '../theme';
+import React, { useCallback, useMemo, useState } from 'react';
+import { View } from 'react-native';
+import { useSelector } from 'react-redux';
+import {
+  Badge,
+  Button,
+  Card,
+  EmptyState,
+  Screen,
+  ScreenHeader,
+  SegmentedControl,
+  Section,
+  Text,
+  useTheme,
+} from '@prehospital-epr/ui';
+import {
+  HandoffService,
+  VITAL_REFERENCES,
+  assessVitalSignsSet,
+  vitalSignsSetToObservations,
+  type HandoffFormat,
+} from '@prehospital-epr/clinical';
+import { RootState } from '../store';
+import {
+  ENCOUNTER_STATUS_LABELS,
+  formatClock,
+  formatDate,
+  formatDuration,
+  patientAgeLabel,
+  patientAgeYears,
+  patientDisplayName,
+} from '../utils/format';
 
-const handoffTypes: Array<{
-  id: string;
-  name: string;
-  description: string;
-  icon: React.ComponentProps<typeof Ionicons>['name'];
-}> = [
-  { id: 'imist', name: 'IMIST-AMBO', description: 'Standard handoff format', icon: 'reader-outline' },
-  { id: 'sbar', name: 'SBAR', description: 'Situation, background, assessment, recommendation', icon: 'chatbubbles-outline' },
-  { id: 'cda', name: 'CDA Document', description: 'Clinical Document Architecture', icon: 'document-text-outline' },
-  { id: 'fhir', name: 'FHIR Bundle', description: 'FHIR R4 transfer bundle', icon: 'git-network-outline' },
+const VITAL_LABELS = Object.fromEntries(
+  Object.values(VITAL_REFERENCES).map(reference => [reference.key, reference.label])
+) as Record<string, string>;
+
+const FORMATS: Array<{ value: HandoffFormat; label: string; icon: string; blurb: string }> = [
+  {
+    value: 'IMIST-AMBO',
+    label: 'IMIST-AMBO',
+    icon: 'list-outline',
+    blurb: 'Mnemonic for the verbal handover, aligned to the PBEC supervision guidelines.',
+  },
+  {
+    value: 'SBAR',
+    label: 'SBAR',
+    icon: 'chatbox-ellipses-outline',
+    blurb: 'Situation, Background, Assessment, Recommendation.',
+  },
+  {
+    value: 'CDA-CCD',
+    label: 'CDA document',
+    icon: 'document-outline',
+    blurb: 'Continuity of Care Document for the receiving facility.',
+  },
+  {
+    value: 'FHIR-BUNDLE',
+    label: 'FHIR bundle',
+    icon: 'git-network-outline',
+    blurb: 'Transaction bundle of the FHIR R4 resources recorded so far.',
+  },
 ];
 
-export const HandoffScreen: React.FC = () => (
-  <ScrollView
-    style={styles.container}
-    contentContainerStyle={styles.content}
-    showsVerticalScrollIndicator={false}
-  >
-    <View style={styles.pageHeader}>
-      <Text style={styles.pageTitle}>Handoff</Text>
-      <Text style={styles.pageSubtitle}>Create a clear, structured transfer of care.</Text>
-    </View>
+type PreviewFormat = 'IMIST-AMBO' | 'SBAR';
 
-    <Text style={styles.sectionLabel}>Handoff format</Text>
-    <View style={styles.typeList}>
-      {handoffTypes.map((type, index) => (
-        <TouchableOpacity
-          key={type.id}
-          style={[styles.typeRow, index < handoffTypes.length - 1 && styles.rowBorder]}
-          onPress={() => {}}
-        >
-          <View style={styles.typeIcon}>
-            <Ionicons name={type.icon} size={22} color={colors.primary} />
-          </View>
-          <View style={styles.typeCopy}>
-            <Text style={styles.typeName}>{type.name}</Text>
-            <Text style={styles.typeDescription}>{type.description}</Text>
-          </View>
-          <Ionicons name="chevron-forward" size={18} color={colors.textTertiary} />
-        </TouchableOpacity>
-      ))}
-    </View>
+export const HandoffScreen: React.FC = () => {
+  const theme = useTheme();
+  const [format, setFormat] = useState<PreviewFormat>('IMIST-AMBO');
+  const [sent, setSent] = useState(false);
 
-    <View style={styles.previewSection}>
-      <View style={styles.previewHeader}>
-        <View>
-          <Text style={styles.sectionTitle}>Preview</Text>
-          <Text style={styles.previewSubtitle}>IMIST-AMBO handoff</Text>
+  const encounter = useSelector((state: RootState) => state.encounter.currentEncounter);
+  const patient = useSelector((state: RootState) => state.patient.currentPatient);
+  const latest = useSelector((state: RootState) => state.observation.vitalSigns[0]);
+  const session = useSelector((state: RootState) => state.auth.session);
+  const { medications, procedures } = useSelector((state: RootState) => state.intervention);
+
+  const service = useMemo(() => new HandoffService(), []);
+
+  /**
+   * Built from the live encounter rather than a fixed string, so the preview
+   * reflects what would actually be handed over.
+   */
+  const preview = useMemo(() => {
+    if (!encounter || !patient) return null;
+
+    const ageYears = patientAgeYears(patient);
+    const assessment = latest
+      ? [
+          `Vitals ${formatClock(latest.timestamp)}`,
+          ...assessVitalSignsSet(latest, ageYears ?? 30).map(
+            item =>
+              `${VITAL_LABELS[item.key] ?? item.key} ${item.value}${
+                item.unit ? ` ${item.unit}` : ''
+              } (${item.level})`
+          ),
+        ].join(', ')
+      : 'No observations recorded';
+
+    // Flat capture -> LOINC-coded FHIR Observations, so the narrative is built
+    // from the same resources the server would receive.
+    const observations = latest
+      ? vitalSignsSetToObservations(latest, {
+          subject: `Patient/${patient.id}`,
+          encounter: `Encounter/${encounter.id}`,
+        })
+      : [];
+
+    return service.generateIMISTAMBO({
+      encounter,
+      patient,
+      vitalSigns: observations,
+      medications,
+      procedures,
+      conditions: [],
+      assessment: assessment || 'No observations recorded',
+      plan: `Destination per receiving facility protocol. ETA ${formatDuration(encounter.period?.start)}.`,
+    });
+  }, [service, encounter, patient, latest, medications, procedures]);
+
+  const handleSend = useCallback(() => {
+    if (!encounter || !patient || !preview) return;
+    service.createHandoff({
+      encounterId: encounter.id,
+      patientId: patient.id,
+      format,
+      priority: encounter.priority ?? 'urgent',
+      fromFacility: { reference: 'Facility/ems-unit' },
+      toFacility: { reference: 'Facility/receiving-hospital' },
+      fromProvider: { reference: `Practitioner/${session?.userId ?? 'unknown'}` },
+      content: preview,
+    });
+    setSent(true);
+  }, [service, encounter, patient, preview, format, session?.userId]);
+
+  if (!encounter || !patient) {
+    return (
+      <Screen>
+        <ScreenHeader title="Handoff" />
+        <Card>
+          <EmptyState
+            icon="swap-horizontal-outline"
+            title="No encounter to hand over"
+            message="Start an encounter and record some observations before preparing a handoff."
+          />
+        </Card>
+      </Screen>
+    );
+  }
+
+  return (
+    <Screen>
+      <ScreenHeader
+        title="Handoff"
+        subtitle={patientDisplayName(patient)}
+        accessory={
+          <Badge
+            label={ENCOUNTER_STATUS_LABELS[encounter.status]}
+            tone={encounter.status === 'finished' ? 'success' : 'primary'}
+            dot
+          />
+        }
+      />
+
+      <Card>
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: theme.spacing.xl }}>
+          <View>
+            <Text variant="caption" tone="tertiary">
+              Patient
+            </Text>
+            <Text variant="subheading">{patientDisplayName(patient)}</Text>
+          </View>
+          <View>
+            <Text variant="caption" tone="tertiary">
+              Age / sex
+            </Text>
+            <Text variant="subheading">
+              {patientAgeLabel(patient)} · {patient.gender ?? 'unknown'}
+            </Text>
+          </View>
+          <View>
+            <Text variant="caption" tone="tertiary">
+              On scene
+            </Text>
+            <Text variant="subheading">{formatDuration(encounter.period?.start)}</Text>
+          </View>
         </View>
-        <View style={styles.previewBadge}>
-          <Ionicons name="eye-outline" size={15} color={colors.primary} />
-          <Text style={styles.previewBadgeText}>Live preview</Text>
-        </View>
-      </View>
-      <View style={styles.previewBox}>
-        {[
-          ['Identification', 'Patient name, date of birth, ID'],
-          ['Mechanism', 'MVC, fall, or medical'],
-          ['Injuries', 'Head, chest, abdomen…'],
-          ['Signs', 'BP 120/80, HR 88, RR 16, SpO₂ 98%'],
-          ['Treatment', 'IV, oxygen, C-collar, splints'],
-          ['Background', 'History, medications, allergies'],
-          ['Other', 'Pregnancy, tetanus, and relevant details'],
-        ].map(([label, value], index) => (
-          <View key={label} style={[styles.previewRow, index < 6 && styles.previewRowBorder]}>
-            <Text style={styles.previewLabel}>{label}</Text>
-            <Text style={styles.previewValue}>{value}</Text>
-          </View>
-        ))}
-      </View>
-    </View>
-  </ScrollView>
-);
+      </Card>
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: colors.background,
-  },
-  content: {
-    width: '100%',
-    maxWidth: layout.contentMaxWidth,
-    alignSelf: 'center',
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.xl,
-    paddingBottom: layout.tabBarHeight + spacing.xxl,
-  },
-  pageHeader: {
-    marginBottom: spacing.xl,
-  },
-  pageTitle: {
-    ...typography.styles.largeTitle,
-    color: colors.textPrimary,
-  },
-  pageSubtitle: {
-    ...typography.styles.subheadline,
-    color: colors.textSecondary,
-    marginTop: spacing.xs,
-  },
-  sectionLabel: {
-    ...typography.styles.footnote,
-    color: colors.textSecondary,
-    fontWeight: '600',
-    marginBottom: spacing.sm,
-    marginLeft: spacing.xxs,
-  },
-  typeList: {
-    overflow: 'hidden',
-    borderRadius: borderRadius.lg,
-    backgroundColor: colors.surface,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.border,
-    ...shadows.sm,
-  },
-  typeRow: {
-    minHeight: 72,
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.md,
-  },
-  rowBorder: {
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.separator,
-  },
-  typeIcon: {
-    width: 44,
-    height: 44,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: borderRadius.md,
-    backgroundColor: colors.primaryLight,
-    marginRight: spacing.md,
-  },
-  typeCopy: {
-    flex: 1,
-  },
-  typeName: {
-    ...typography.styles.headline,
-    color: colors.textPrimary,
-  },
-  typeDescription: {
-    ...typography.styles.footnote,
-    color: colors.textSecondary,
-    marginTop: 2,
-  },
-  previewSection: {
-    marginTop: spacing.xl,
-  },
-  previewHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: spacing.md,
-  },
-  sectionTitle: {
-    ...typography.styles.title3,
-    color: colors.textPrimary,
-  },
-  previewSubtitle: {
-    ...typography.styles.footnote,
-    color: colors.textSecondary,
-    marginTop: 2,
-  },
-  previewBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.xs,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xs,
-    borderRadius: borderRadius.full,
-    backgroundColor: colors.primaryLight,
-  },
-  previewBadgeText: {
-    ...typography.styles.caption2,
-    color: colors.primary,
-    fontWeight: '600',
-  },
-  previewBox: {
-    overflow: 'hidden',
-    borderRadius: borderRadius.lg,
-    backgroundColor: colors.surface,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.border,
-    ...shadows.sm,
-  },
-  previewRow: {
-    minHeight: 54,
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-  },
-  previewRowBorder: {
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.separator,
-  },
-  previewLabel: {
-    width: 112,
-    ...typography.styles.footnote,
-    color: colors.textPrimary,
-    fontWeight: '600',
-  },
-  previewValue: {
-    flex: 1,
-    ...typography.styles.footnote,
-    color: colors.textSecondary,
-  },
-});
+      <Section title="Format">
+        <Card padded={false}>
+          {FORMATS.map((option, index) => (
+            <View key={option.value}>
+              {index > 0 ? <View style={{ height: 1, backgroundColor: theme.colors.separator }} /> : null}
+              <View style={{ padding: theme.spacing.lg, gap: theme.spacing.xs }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: theme.spacing.sm }}>
+                  <Text variant="subheading" style={{ flex: 1 }}>
+                    {option.label}
+                  </Text>
+                  {format === option.value ? <Badge label="Previewing" tone="primary" /> : null}
+                </View>
+                <Text variant="caption" tone="tertiary">
+                  {option.blurb}
+                </Text>
+              </View>
+            </View>
+          ))}
+        </Card>
+      </Section>
+
+      <Section title="Preview">
+        <Card padded={false}>
+          <View style={{ padding: theme.spacing.lg, gap: theme.spacing.sm }}>
+            <Text variant="caption" tone="tertiary">
+              LIVE · regenerated from the current record
+            </Text>
+            <View
+              style={{
+                padding: theme.spacing.md,
+                borderRadius: theme.borderRadius.md,
+                backgroundColor: theme.colors.surfaceSunken,
+              }}
+            >
+              <Text
+                variant="mono"
+                tone="secondary"
+                style={{ lineHeight: theme.typography.sizes.md * 1.5 }}
+              >
+                {preview ?? 'No preview available.'}
+              </Text>
+            </View>
+          </View>
+        </Card>
+      </Section>
+
+      <Section title="Deliver">
+        <SegmentedControl
+          value={format}
+          options={FORMATS.filter(f => f.value === 'IMIST-AMBO' || f.value === 'SBAR').map(f => ({
+            value: f.value as PreviewFormat,
+            label: f.label,
+          }))}
+          onChange={next => {
+            setFormat(next);
+            setSent(false);
+          }}
+        />
+        <Button
+          label={sent ? 'Handoff recorded' : 'Complete handoff'}
+          onPress={handleSend}
+          icon={sent ? 'checkmark-circle' : 'paper-plane-outline'}
+          variant={sent ? 'secondary' : 'primary'}
+          fullWidth
+          size="lg"
+        />
+        <Text variant="caption" tone="tertiary">
+          Recording the handoff closes the encounter at{' '}
+          {formatDate(new Date().toISOString())} {formatClock(new Date().toISOString())}.
+        </Text>
+      </Section>
+    </Screen>
+  );
+};

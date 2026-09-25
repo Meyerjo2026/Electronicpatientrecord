@@ -1,5 +1,4 @@
 import { createSlice, createAsyncThunk, PayloadAction } from '@reduxjs/toolkit';
-import { SyncEngine, SyncState, Operation } from '@prehospital-epr/sync';
 
 interface SyncStateSlice {
   isOnline: boolean;

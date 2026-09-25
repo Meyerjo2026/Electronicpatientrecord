@@ -2,6 +2,17 @@ import { createSlice, createAsyncThunk, PayloadAction } from '@reduxjs/toolkit';
 import { Encounter, EncounterCreate, EncounterSearchParams } from '@prehospital-epr/core';
 import { ulid } from 'ulid';
 
+/**
+ * `EncounterCreate` carries zod `.default()`s for the server-managed fields, so its
+ * inferred type still demands them. Callers supply only clinical content; the
+ * thunk mints the identity fields.
+ */
+export type EncounterDraft = Omit<
+  EncounterCreate,
+  'id' | 'meta' | 'resourceType' | 'status'
+> &
+  Partial<Pick<EncounterCreate, 'id' | 'resourceType' | 'status'>>;
+
 type EncounterStatus = Encounter['status'];
 
 interface EncounterState {
@@ -24,12 +35,13 @@ const initialState: EncounterState = {
 
 export const createEncounter = createAsyncThunk(
   'encounter/create',
-  async (data: EncounterCreate, { rejectWithValue }) => {
+  async (data: EncounterDraft) => {
     await new Promise(resolve => setTimeout(resolve, 100));
     const encounter: Encounter = {
       ...data,
       id: data.id || ulid(),
       resourceType: 'Encounter',
+      status: data.status ?? 'planned',
       meta: {
         versionId: '1',
         lastUpdated: new Date().toISOString(),
@@ -53,19 +65,35 @@ export const updateEncounterStatus = createAsyncThunk(
   }
 );
 
+/**
+ * Resolve an encounter by id from the local store, so screens can deep-link to
+ * an encounter while offline.
+ */
 export const loadEncounter = createAsyncThunk<Encounter | null, string>(
   'encounter/load',
-  async (encounterId: string, { rejectWithValue }) => {
-    await new Promise(resolve => setTimeout(resolve, 100));
-    return null;
+  async (encounterId: string, { getState }) => {
+    await new Promise(resolve => setTimeout(resolve, 50));
+    const { encounter } = getState() as { encounter: EncounterState };
+    return encounter.encounters.find(item => item.id === encounterId) ?? null;
   }
 );
 
+/** Offline-first encounter search over locally held records. */
 export const searchEncounters = createAsyncThunk(
   'encounter/search',
-  async (params: EncounterSearchParams, { rejectWithValue }) => {
-    await new Promise(resolve => setTimeout(resolve, 300));
-    return { encounters: [], total: 0 };
+  async (params: EncounterSearchParams, { getState }) => {
+    await new Promise(resolve => setTimeout(resolve, 150));
+    const { encounter } = getState() as { encounter: EncounterState };
+
+    const matches = encounter.encounters.filter(item => {
+      if (params.status && item.status !== params.status) return false;
+      if (params.date && item.period?.start && !item.period.start.startsWith(params.date)) {
+        return false;
+      }
+      return true;
+    });
+
+    return { encounters: matches, total: matches.length };
   }
 );
 

@@ -37,6 +37,8 @@ export const HandoffFormatSchema = z.enum([
   'HL7-V2',
 ]);
 
+export type HandoffFormat = z.infer<typeof HandoffFormatSchema>;
+
 export const HandoffStatusSchema = z.enum([
   'draft',
   'pending',

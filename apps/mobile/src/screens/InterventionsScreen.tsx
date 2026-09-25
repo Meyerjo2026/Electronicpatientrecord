@@ -1,182 +1,294 @@
-import React from 'react';
-import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
-import { colors, spacing, typography, borderRadius, shadows, layout } from '../theme';
+import React, { useCallback, useState } from 'react';
+import { Modal, Pressable, View } from 'react-native';
+import { useDispatch, useSelector } from 'react-redux';
+import {
+  Button,
+  Card,
+  Divider,
+  EmptyState,
+  IconButton,
+  Screen,
+  ScreenHeader,
+  SegmentedControl,
+  SelectField,
+  Text,
+  TextField,
+  useTheme,
+} from '@prehospital-epr/ui';
+import type {
+  MedicationAdministrationCategory,
+  ProcedureCategory,
+  Route,
+} from '@prehospital-epr/core';
+import { AppDispatch, RootState } from '../store';
+import {
+  MEDICATION_CATEGORIES,
+  PROCEDURE_CATEGORIES,
+  ROUTES,
+  recordMedication,
+  recordProcedure,
+  removeMedication,
+  removeProcedure,
+} from '../store/interventionSlice';
+import { formatClock } from '../utils/format';
 
-const interventionTypes: Array<{
-  id: string;
-  name: string;
-  description: string;
-  icon: React.ComponentProps<typeof Ionicons>['name'];
-  color: string;
-}> = [
-  { id: 'airway', name: 'Airway Management', description: 'Assess and maintain the airway', icon: 'fitness-outline', color: colors.primary },
-  { id: 'breathing', name: 'Breathing Support', description: 'Oxygen, ventilation, and airway adjuncts', icon: 'pulse-outline', color: colors.secondary },
-  { id: 'circulation', name: 'Circulation', description: 'Hemorrhage control and circulation support', icon: 'heart-outline', color: colors.error },
-  { id: 'medication', name: 'Medication', description: 'Record medications and doses', icon: 'medical-outline', color: colors.warning },
-  { id: 'procedure', name: 'Procedures', description: 'Document performed procedures', icon: 'construct-outline', color: colors.info },
-  { id: 'monitoring', name: 'Monitoring', description: 'Track devices, observations, and trends', icon: 'speedometer-outline', color: colors.triage.minimal },
-];
+type Mode = 'medication' | 'procedure';
 
-export const InterventionsScreen: React.FC = () => (
-  <ScrollView
-    style={styles.container}
-    contentContainerStyle={styles.content}
-    showsVerticalScrollIndicator={false}
-  >
-    <View style={styles.pageHeader}>
-      <Text style={styles.pageTitle}>Interventions</Text>
-      <Text style={styles.pageSubtitle}>Document care delivered during this encounter.</Text>
-    </View>
+export const InterventionsScreen: React.FC = () => {
+  const theme = useTheme();
+  const dispatch = useDispatch<AppDispatch>();
+  const { medications, procedures } = useSelector((state: RootState) => state.intervention);
 
-    <Text style={styles.sectionLabel}>Choose a category</Text>
-    <View style={styles.grid}>
-      {interventionTypes.map(type => (
-        <TouchableOpacity
-          key={type.id}
-          style={styles.categoryCard}
-          onPress={() => {}}
-        >
-          <View style={[styles.categoryIcon, { backgroundColor: type.color + '18' }]}>
-            <Ionicons name={type.icon} size={24} color={type.color} />
+  const [mode, setMode] = useState<Mode>('medication');
+  const [sheetOpen, setSheetOpen] = useState(false);
+  const [name, setName] = useState('');
+  const [dose, setDose] = useState('');
+  const [route, setRoute] = useState<Route>('IV');
+  const [medCategory, setMedCategory] = useState<MedicationAdministrationCategory>('emergency');
+  const [procCategory, setProcCategory] = useState<ProcedureCategory>('airway');
+  const [error, setError] = useState<string | undefined>();
+
+  const total = medications.length + procedures.length;
+
+  const row = {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: theme.spacing.md,
+    padding: theme.spacing.lg,
+  } as const;
+
+  const sheet = {
+    backgroundColor: theme.colors.surface,
+    borderTopLeftRadius: theme.borderRadius.xl,
+    borderTopRightRadius: theme.borderRadius.xl,
+    padding: theme.spacing.lg,
+    gap: theme.spacing.lg,
+  } as const;
+
+  const close = useCallback(() => {
+    setSheetOpen(false);
+    setName('');
+    setDose('');
+    setError(undefined);
+  }, []);
+
+  const handleSave = useCallback(async () => {
+    const trimmed = name.trim();
+    if (!trimmed) {
+      setError(mode === 'medication' ? 'Enter the medication given.' : 'Enter the procedure performed.');
+      return;
+    }
+
+    const subject = { reference: 'Patient/current' };
+    const now = new Date().toISOString();
+
+    if (mode === 'medication') {
+      const amount = dose.trim() ? Number(dose) : undefined;
+      if (dose.trim() && (amount === undefined || Number.isNaN(amount))) {
+        setError('Dose must be a number.');
+        return;
+      }
+      await dispatch(
+        recordMedication({
+          medicationCodeableConcept: { text: trimmed },
+          category: [{ text: MEDICATION_CATEGORIES.find(c => c.value === medCategory)?.label ?? '' }],
+          subject,
+          effectiveDateTime: now,
+          dosage: {
+            text: [amount === undefined ? undefined : `${amount}`, route].filter(Boolean).join(' '),
+            route: { text: route },
+            ...(amount === undefined
+              ? {}
+              : { dose: { value: amount, unit: 'mg', system: 'http://unitsofmeasure.org' } }),
+          },
+        })
+      );
+    } else {
+      await dispatch(
+        recordProcedure({
+          code: { text: trimmed },
+          category: {
+            text: PROCEDURE_CATEGORIES.find(c => c.value === procCategory)?.label ?? '',
+          },
+          subject,
+          performedDateTime: now,
+        })
+      );
+    }
+    close();
+  }, [dispatch, mode, name, dose, route, medCategory, procCategory, close]);
+
+  const switchMode = useCallback((next: Mode) => setMode(next), []);
+
+  return (
+    <Screen>
+      <ScreenHeader
+        title="Interventions"
+        subtitle="Treatments and procedures given on this encounter"
+        accessory={
+          <Button
+            label="Record"
+            icon="add"
+            size="sm"
+            onPress={() => setSheetOpen(true)}
+          />
+        }
+      />
+
+      <SegmentedControl
+        value={mode}
+        options={[
+          { value: 'medication', label: `Medications (${medications.length})` },
+          { value: 'procedure', label: `Procedures (${procedures.length})` },
+        ]}
+        onChange={switchMode}
+      />
+
+      <Card padded={false}>
+        {total === 0 ? (
+          <EmptyState
+            icon="medkit-outline"
+            title="Nothing recorded yet"
+            message="Record medications and procedures as you perform them. They are carried into the handoff automatically."
+            action={{ label: 'Record intervention', onPress: () => setSheetOpen(true) }}
+          />
+        ) : mode === 'medication' ? (
+          medications.length === 0 ? (
+            <EmptyState icon="medkit-outline" title="No medications" />
+          ) : (
+            medications.map((item, index) => (
+              <View key={item.id}>
+                {index > 0 ? <Divider inset={theme.spacing.lg} /> : null}
+                <View style={row}>
+                  <View style={{ flex: 1, gap: 2 }}>
+                    <Text variant="subheading" numberOfLines={1}>
+                      {item.medicationCodeableConcept?.text ?? 'Medication'}
+                    </Text>
+                    <Text variant="caption" tone="tertiary">
+                      {[
+                        item.dosage?.text,
+                        item.category?.[0]?.text,
+                        item.effectiveDateTime ? formatClock(item.effectiveDateTime) : undefined,
+                      ]
+                        .filter(Boolean)
+                        .join(' · ')}
+                    </Text>
+                  </View>
+                  <IconButton
+                    icon="trash-outline"
+                    label="Remove medication"
+                    size={17}
+                    tone="critical"
+                    onPress={() => dispatch(removeMedication(item.id))}
+                  />
+                </View>
+              </View>
+            ))
+          )
+        ) : procedures.length === 0 ? (
+          <EmptyState icon="cut-outline" title="No procedures" />
+        ) : (
+          procedures.map((item, index) => (
+            <View key={item.id}>
+              {index > 0 ? <Divider inset={theme.spacing.lg} /> : null}
+              <View style={row}>
+                <View style={{ flex: 1, gap: 2 }}>
+                  <Text variant="subheading" numberOfLines={1}>
+                    {item.code?.text ?? 'Procedure'}
+                  </Text>
+                  <Text variant="caption" tone="tertiary">
+                    {[
+                      item.category?.text,
+                      item.performedDateTime ? formatClock(item.performedDateTime) : undefined,
+                    ]
+                      .filter(Boolean)
+                      .join(' · ')}
+                  </Text>
+                </View>
+                <IconButton
+                  icon="trash-outline"
+                  label="Remove procedure"
+                  size={17}
+                  tone="critical"
+                  onPress={() => dispatch(removeProcedure(item.id))}
+                />
+              </View>
+            </View>
+          ))
+        )}
+      </Card>
+
+      <Modal visible={sheetOpen} transparent animationType="slide" onRequestClose={close}>
+        <View style={{ flex: 1, backgroundColor: theme.colors.scrim, justifyContent: 'flex-end' }}>
+          <Pressable style={{ flex: 1 }} onPress={close} accessibilityLabel="Dismiss" />
+          <View style={sheet}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+              <Text variant="heading">Record intervention</Text>
+              <IconButton icon="close" label="Close" onPress={close} />
+            </View>
+
+            <SegmentedControl
+              value={mode}
+              options={[
+                { value: 'medication', label: 'Medication' },
+                { value: 'procedure', label: 'Procedure' },
+              ]}
+              onChange={switchMode}
+            />
+
+            <TextField
+              label={mode === 'medication' ? 'Medication' : 'Procedure'}
+              required
+              value={name}
+              onChangeText={value => {
+                setName(value);
+                if (error) setError(undefined);
+              }}
+              placeholder={mode === 'medication' ? 'e.g. Adrenaline' : 'e.g. Cricoid pressure'}
+              error={error}
+            />
+
+            {mode === 'medication' ? (
+              <>
+                <TextField
+                  label="Dose (mg)"
+                  value={dose}
+                  onChangeText={setDose}
+                  keyboardType="decimal-pad"
+                  placeholder="e.g. 0.5"
+                />
+                <SelectField
+                  label="Route"
+                  value={route}
+                  onChange={value => setRoute(value as Route)}
+                  options={ROUTES.map(item => ({ value: item, label: item }))}
+                />
+                <SelectField
+                  label="Category"
+                  value={medCategory}
+                  onChange={value => setMedCategory(value as MedicationAdministrationCategory)}
+                  options={MEDICATION_CATEGORIES.map(item => ({
+                    value: item.value,
+                    label: item.label,
+                  }))}
+                />
+              </>
+            ) : (
+              <SelectField
+                label="Category"
+                value={procCategory}
+                onChange={value => setProcCategory(value as ProcedureCategory)}
+                options={PROCEDURE_CATEGORIES.map(item => ({
+                  value: item.value,
+                  label: item.label,
+                }))}
+              />
+            )}
+
+            <Button label="Save" onPress={handleSave} fullWidth size="lg" />
           </View>
-          <View style={styles.categoryCopy}>
-            <Text style={styles.categoryName}>{type.name}</Text>
-            <Text style={styles.categoryDescription}>{type.description}</Text>
-          </View>
-          <Ionicons name="chevron-forward" size={18} color={colors.textTertiary} />
-        </TouchableOpacity>
-      ))}
-    </View>
-
-    <View style={styles.performedSection}>
-      <View style={styles.performedHeader}>
-        <Text style={styles.sectionTitle}>Performed Interventions</Text>
-        <Text style={styles.count}>0</Text>
-      </View>
-      <View style={styles.emptyState}>
-        <View style={styles.emptyIcon}>
-          <Ionicons name="checkmark-done-outline" size={28} color={colors.primary} />
         </View>
-        <Text style={styles.emptyTitle}>Nothing documented yet</Text>
-        <Text style={styles.emptyText}>Completed interventions will appear here.</Text>
-      </View>
-    </View>
-  </ScrollView>
-);
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: colors.background,
-  },
-  content: {
-    width: '100%',
-    maxWidth: layout.contentMaxWidth,
-    alignSelf: 'center',
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.xl,
-    paddingBottom: layout.tabBarHeight + spacing.xxl,
-  },
-  pageHeader: {
-    marginBottom: spacing.xl,
-  },
-  pageTitle: {
-    ...typography.styles.largeTitle,
-    color: colors.textPrimary,
-  },
-  pageSubtitle: {
-    ...typography.styles.subheadline,
-    color: colors.textSecondary,
-    marginTop: spacing.xs,
-  },
-  sectionLabel: {
-    ...typography.styles.footnote,
-    color: colors.textSecondary,
-    fontWeight: '600',
-    marginBottom: spacing.sm,
-    marginLeft: spacing.xxs,
-  },
-  grid: {
-    overflow: 'hidden',
-    borderRadius: borderRadius.lg,
-    backgroundColor: colors.surface,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.border,
-    ...shadows.sm,
-  },
-  categoryCard: {
-    minHeight: 76,
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.md,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.separator,
-  },
-  categoryIcon: {
-    width: 46,
-    height: 46,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: borderRadius.md,
-    marginRight: spacing.md,
-  },
-  categoryCopy: {
-    flex: 1,
-  },
-  categoryName: {
-    ...typography.styles.headline,
-    color: colors.textPrimary,
-  },
-  categoryDescription: {
-    ...typography.styles.footnote,
-    color: colors.textSecondary,
-    marginTop: 2,
-  },
-  pressed: {
-    backgroundColor: colors.fill,
-  },
-  performedSection: {
-    marginTop: spacing.xl,
-  },
-  performedHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: spacing.md,
-  },
-  sectionTitle: {
-    ...typography.styles.title3,
-    color: colors.textPrimary,
-  },
-  count: {
-    ...typography.styles.footnote,
-    color: colors.textTertiary,
-  },
-  emptyState: {
-    alignItems: 'center',
-    paddingHorizontal: spacing.xl,
-    paddingVertical: spacing.xxl,
-    borderRadius: borderRadius.lg,
-    backgroundColor: colors.surface,
-  },
-  emptyIcon: {
-    width: 56,
-    height: 56,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: borderRadius.lg,
-    backgroundColor: colors.primaryLight,
-  },
-  emptyTitle: {
-    ...typography.styles.headline,
-    color: colors.textPrimary,
-    marginTop: spacing.md,
-  },
-  emptyText: {
-    ...typography.styles.subheadline,
-    color: colors.textSecondary,
-    marginTop: spacing.xs,
-  },
-});
+      </Modal>
+    </Screen>
+  );
+};

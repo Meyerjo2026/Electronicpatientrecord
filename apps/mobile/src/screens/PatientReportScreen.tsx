@@ -1,559 +1,403 @@
 import React, { useCallback, useMemo, useState } from 'react';
-import { ActivityIndicator, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { ScrollView, View } from 'react-native';
 import { useDispatch, useSelector } from 'react-redux';
-import { RootState, AppDispatch } from '../store';
-import { createPatient } from '../store/patientSlice';
-import { createEncounter } from '../store/encounterSlice';
-import { colors, spacing, typography, borderRadius, shadows, layout } from '../theme';
 import {
+  Badge,
+  Button,
+  Card,
+  DateTimeField,
+  Screen,
+  ScreenHeader,
+  SelectField,
+  Text,
+  TextField,
+  useTheme,
+} from '@prehospital-epr/ui';
+import {
+  FORM_SECTIONS,
   getFormSections,
   getValueSetForElement,
   validatePatientReportFormData,
-  createEmptyPatientReportFormData,
   type FormElementConfig,
 } from '@prehospital-epr/nemsis';
+import { AppDispatch, RootState } from '../store';
+import { createEncounter, setActiveEncounter, setCurrentEncounter } from '../store/encounterSlice';
+import { createPatient, setCurrentPatient } from '../store/patientSlice';
+import { demographicsFrom, type FormData } from '../utils/nemsis-demographics';
+import { ENCOUNTER_STATUS_LABELS, formatClock, formatTimeOfDay } from '../utils/format';
+
+const EMPTY: FormData = FORM_SECTIONS.reduce<FormData>((acc, sectionId) => {
+  acc[sectionId] = {};
+  return acc;
+}, {});
+
+const CONTROL_LABEL: Record<string, string> = {
+  textarea: 'Narrative',
+  datetime: 'Timestamp',
+  date: 'Date',
+  number: 'Numeric',
+  multiselect: 'Multi-select',
+  radio: 'Single choice',
+  select: 'Coded list',
+  gps: 'Location',
+  text: 'Free text',
+};
 
 export const PatientReportScreen: React.FC = () => {
+  const theme = useTheme();
   const dispatch = useDispatch<AppDispatch>();
-  const { currentPatient } = useSelector((state: RootState) => state.patient);
-  const { currentEncounter } = useSelector((state: RootState) => state.encounter);
 
-  const [formData, setFormData] = useState<Record<string, any>>(createEmptyPatientReportFormData());
-  const [activeSection, setActiveSection] = useState<string>('ePatient');
-  const [errors, setErrors] = useState<string[]>([]);
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const patient = useSelector((state: RootState) => state.patient.currentPatient);
+  const encounter = useSelector((state: RootState) => state.encounter.currentEncounter);
 
   const sections = useMemo(() => getFormSections(), []);
-  const currentSection = useMemo(() => sections.find(section => section.id === activeSection), [sections, activeSection]);
+  const [activeSection, setActiveSection] = useState<string>(sections[0]?.id ?? 'ePatient');
+  const [formData, setFormData] = useState<FormData>(EMPTY);
+  const [errors, setErrors] = useState<string[]>([]);
+  const [submitted, setSubmitted] = useState(false);
 
-  const handleValueChange = useCallback((sectionId: string, elementCode: string, value: any) => {
-    setFormData(previous => ({
-      ...previous,
-      [sectionId]: { ...previous[sectionId], [elementCode]: value },
+  const current = useMemo(
+    () => sections.find(section => section.id === activeSection) ?? sections[0],
+    [sections, activeSection]
+  );
+
+  /**
+   * Validation returns human readable messages; map them back onto element
+   * codes so the error renders next to the field that produced it.
+   */
+  const errorsByCode = useMemo(() => {
+    const map: Record<string, string> = {};
+    for (const message of errors) {
+      const match = /\(([A-Za-z]+\.\d+)\)\s*$/.exec(message);
+      if (match?.[1]) map[match[1]] = message;
+    }
+    return map;
+  }, [errors]);
+
+  const completion = useMemo(() => {
+    const all = sections.flatMap(section => section.elements);
+    const answered = all.filter(element => {
+      const value = formData[element.sectionId]?.[element.code];
+      return typeof value === 'string' && value.trim() !== '';
+    });
+    const required = all.filter(element => element.required);
+    const answeredRequired = required.filter(element => {
+      const value = formData[element.sectionId]?.[element.code];
+      return typeof value === 'string' && value.trim() !== '';
+    });
+    return {
+      total: all.length,
+      answered: answered.length,
+      requiredTotal: required.length,
+      requiredAnswered: answeredRequired.length,
+    };
+  }, [sections, formData]);
+
+  const setValue = useCallback((sectionId: string, code: string, value: string) => {
+    setFormData(prev => ({
+      ...prev,
+      [sectionId]: { ...(prev[sectionId] ?? {}), [code]: value },
     }));
-    setErrors(previous => previous.filter(error => !error.includes(elementCode)));
-  }, []);
-
-  const handleSaveDraft = useCallback(() => {
-    setErrors([]);
   }, []);
 
   const handleSubmit = useCallback(async () => {
-    setIsSubmitting(true);
-    const validationErrors = validatePatientReportFormData(formData);
-    if (validationErrors.length > 0) {
-      setErrors(validationErrors);
-      setIsSubmitting(false);
+    const found = validatePatientReportFormData(formData);
+    setErrors(found);
+    if (found.length > 0) {
+      // Jump to the first section that still has a problem.
+      const firstCode = /\(([A-Za-z]+\.\d+)\)/.exec(found[0] ?? '')?.[1];
+      const owner = sections.find(section =>
+        section.elements.some(element => element.code === firstCode)
+      );
+      if (owner) setActiveSection(owner.id);
       return;
     }
+    setSubmitted(true);
 
-    try {
-      const patientData = formData.ePatient;
-      if (patientData['ePatient.02'] || patientData['ePatient.03']) {
-        const patient = {
-          id: patientData['ePatient.01'] || undefined,
-          resourceType: 'Patient' as const,
-          identifier: patientData['ePatient.01'] ? [{ value: patientData['ePatient.01'] }] : [],
-          name: [{
-            family: patientData['ePatient.02'],
-            given: patientData['ePatient.03'] ? [patientData['ePatient.03']] : [],
-            suffix: patientData['ePatient.23'] ? [patientData['ePatient.23']] : [],
-          }],
-          gender: patientData['ePatient.25'] === '9919001' ? 'female' : patientData['ePatient.25'] === '9919003' ? 'male' : 'unknown',
-          birthDate: patientData['ePatient.17'],
-          address: patientData['ePatient.05'] ? [{
-            line: [patientData['ePatient.05']],
-            city: patientData['ePatient.06'],
-            district: patientData['ePatient.07'],
-            state: patientData['ePatient.08'],
-            postalCode: patientData['ePatient.09'],
-            country: patientData['ePatient.10'],
-          }] : [],
-          telecom: [
-            patientData['ePatient.18'] ? { system: 'phone', value: patientData['ePatient.18'] } : null,
-            patientData['ePatient.19'] ? { system: 'email', value: patientData['ePatient.19'] } : null,
-          ].filter(Boolean) as any[],
-        };
-        const patientResult = await dispatch(createPatient(patient as any)).unwrap();
-
-        if (currentEncounter) {
-          await dispatch(createEncounter({
-            ...currentEncounter,
-            subject: { reference: `Patient/${patientResult.id}`, display: patientResult.name?.[0]?.family },
-          })).unwrap();
-        }
+    // A completed report must never be orphaned: ensure both the patient and
+    // the encounter it documents exist, seeding demographics from ePatient.
+    let patientId = patient?.id;
+    if (!patientId) {
+      const created = await dispatch(createPatient(demographicsFrom(formData)));
+      if (createPatient.fulfilled.match(created)) {
+        patientId = created.payload.id;
+        dispatch(setCurrentPatient(created.payload));
       }
-
-      setErrors([]);
-    } catch {
-      setErrors(['Failed to submit report. Please try again.']);
-    } finally {
-      setIsSubmitting(false);
     }
-  }, [dispatch, formData, currentEncounter]);
 
-  const renderField = (element: FormElementConfig) => {
-    const value = formData[element.sectionId]?.[element.code] ?? '';
-    const valueSet = getValueSetForElement(element as any);
-
-    switch (element.controlType) {
-      case 'select':
-        return (
-          <TouchableOpacity style={styles.selectButton} onPress={() => {}}>
-            <Text style={value ? styles.selectValue : styles.selectPlaceholder}>
-              {value ? valueSet?.values.find(option => option.code === value)?.label || value : 'Select…'}
-            </Text>
-            <Ionicons name="chevron-down" size={18} color={colors.textTertiary} />
-          </TouchableOpacity>
-        );
-      case 'radio':
-        return (
-          <View style={styles.radioGroup}>
-            {valueSet?.values.slice(0, 5).map(option => (
-              <TouchableOpacity
-                key={option.code}
-                style={[styles.radioOption, value === option.code && styles.radioOptionSelected]}
-                onPress={() => handleValueChange(element.sectionId, element.code, option.code)}
-              >
-                <View style={[styles.radioCircle, value === option.code && styles.radioCircleSelected]} />
-                <Text style={styles.radioLabel}>{option.label}</Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-        );
-      case 'textarea':
-        return (
-          <TextInput
-            style={styles.textarea}
-            value={value}
-            onChangeText={text => handleValueChange(element.sectionId, element.code, text)}
-            multiline
-            numberOfLines={4}
-            placeholder={element.placeholder || element.definition}
-            placeholderTextColor={colors.textTertiary}
-          />
-        );
-      case 'number':
-        return (
-          <TextInput
-            style={styles.input}
-            value={String(value)}
-            onChangeText={text => handleValueChange(element.sectionId, element.code, text)}
-            keyboardType="decimal-pad"
-            placeholder={element.placeholder}
-            placeholderTextColor={colors.textTertiary}
-          />
-        );
-      case 'datetime':
-        return (
-          <TouchableOpacity style={styles.datetimeButton} onPress={() => {}}>
-            <Text style={value ? styles.datetimeValue : styles.datetimePlaceholder}>
-              {value ? new Date(value).toLocaleString() : 'Select date & time'}
-            </Text>
-          </TouchableOpacity>
-        );
-      case 'date':
-        return (
-          <TouchableOpacity style={styles.dateButton} onPress={() => {}}>
-            <Text style={value ? styles.dateValue : styles.datePlaceholder}>
-              {value ? new Date(value).toLocaleDateString() : 'Select date'}
-            </Text>
-          </TouchableOpacity>
-        );
-      case 'gps':
-        return (
-          <View style={styles.gpsInputs}>
-            <TextInput
-              style={styles.gpsInput}
-              placeholder="Latitude"
-              placeholderTextColor={colors.textTertiary}
-              value={String(value?.lat || '')}
-              onChangeText={text => handleValueChange(element.sectionId, element.code, { ...value, lat: parseFloat(text) })}
-              keyboardType="decimal-pad"
-            />
-            <TextInput
-              style={styles.gpsInput}
-              placeholder="Longitude"
-              placeholderTextColor={colors.textTertiary}
-              value={String(value?.lon || '')}
-              onChangeText={text => handleValueChange(element.sectionId, element.code, { ...value, lon: parseFloat(text) })}
-              keyboardType="decimal-pad"
-            />
-          </View>
-        );
-      default:
-        return (
-          <TextInput
-            style={styles.input}
-            value={String(value)}
-            onChangeText={text => handleValueChange(element.sectionId, element.code, text)}
-            placeholder={element.placeholder || element.definition}
-            placeholderTextColor={colors.textTertiary}
-          />
-        );
+    if (!encounter && patientId) {
+      const createdEncounter = await dispatch(
+        createEncounter({
+          status: 'in-progress',
+          class: 'emergency',
+          subject: { reference: `Patient/${patientId}` },
+          period: { start: new Date().toISOString() },
+        })
+      );
+      if (createEncounter.fulfilled.match(createdEncounter)) {
+        dispatch(setCurrentEncounter(createdEncounter.payload));
+        dispatch(setActiveEncounter(createdEncounter.payload.id));
+      }
     }
-  };
+  }, [dispatch, formData, patient, encounter, sections]);
+
+  if (!current) {
+    return (
+      <Screen>
+        <ScreenHeader title="Patient report" />
+        <Card>
+          <Text variant="body" tone="tertiary">
+            The NEMSIS dictionary did not return any form sections.
+          </Text>
+        </Card>
+      </Screen>
+    );
+  }
 
   return (
-    <ScrollView
-      style={styles.container}
-      contentContainerStyle={styles.content}
-      showsVerticalScrollIndicator={false}
-      keyboardShouldPersistTaps="handled"
-    >
-      <View style={styles.reportHeader}>
-        <View>
-          <Text style={styles.eyebrow}>NEMSIS 3.5</Text>
-          <Text style={styles.reportTitle}>Patient Report</Text>
-          <Text style={styles.reportSubtitle}>
-            {currentPatient?.name?.[0]?.given?.[0] || 'New patient'} {currentPatient?.name?.[0]?.family || ''}
+    <Screen>
+      <ScreenHeader
+        title="Patient report"
+        subtitle="NEMSIS v3 prehospital care report"
+        accessory={<Badge label={submitted ? 'Submitted' : 'Draft'} tone={submitted ? 'success' : 'warning'} dot />}
+      />
+
+      <Card>
+        <View style={{ gap: theme.spacing.sm }}>
+          <View
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: theme.spacing.md,
+            }}
+          >
+            <Text variant="label" tone="secondary">
+              {encounter ? 'Linked encounter' : 'No encounter yet'}
+            </Text>
+            <Text variant="label" tone={encounter ? 'primary-accent' : 'tertiary'}>
+              {encounter
+                ? `${ENCOUNTER_STATUS_LABELS[encounter.status]} · ${formatClock(encounter.period?.start)}`
+                : 'Created on submit'}
+            </Text>
+          </View>
+          <View
+            style={{
+              height: 6,
+              borderRadius: 3,
+              backgroundColor: theme.colors.surfaceSunken,
+              overflow: 'hidden',
+            }}
+            accessibilityRole="progressbar"
+            accessibilityValue={{
+              now: completion.requiredAnswered,
+              min: 0,
+              max: completion.requiredTotal,
+            }}
+          >
+            <View
+              style={{
+                width: `${
+                  completion.requiredTotal === 0
+                    ? 0
+                    : (completion.requiredAnswered / completion.requiredTotal) * 100
+                }%`,
+                height: '100%',
+                backgroundColor:
+                  completion.requiredAnswered === completion.requiredTotal
+                    ? theme.colors.success
+                    : theme.colors.primary,
+              }}
+            />
+          </View>
+          <Text variant="caption" tone="tertiary">
+            {completion.requiredAnswered}/{completion.requiredTotal} required ·{' '}
+            {completion.answered}/{completion.total} elements completed · {formatTimeOfDay()}
           </Text>
         </View>
-        <View style={styles.draftBadge}>
-          <Ionicons name="document-text-outline" size={16} color={colors.primary} />
-          <Text style={styles.draftText}>Draft</Text>
-        </View>
-      </View>
+      </Card>
 
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.sectionTabs}>
-        {sections.map(section => (
-          <TouchableOpacity
-            key={section.id}
-            style={[styles.sectionTab, activeSection === section.id && styles.sectionTabActive]}
-            onPress={() => setActiveSection(section.id)}
-          >
-            <Text style={[styles.sectionTabText, activeSection === section.id && styles.sectionTabTextActive]}>
-              {section.name}
-            </Text>
-          </TouchableOpacity>
-        ))}
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={{ gap: theme.spacing.sm, paddingRight: theme.spacing.lg }}
+      >
+        {sections.map(section => {
+          const active = section.id === activeSection;
+          return (
+            <Button
+              key={section.id}
+              label={section.name}
+              size="sm"
+              variant={active ? 'primary' : 'secondary'}
+              onPress={() => setActiveSection(section.id)}
+            />
+          );
+        })}
       </ScrollView>
 
-      {currentSection && (
-        <View style={styles.formCard}>
-          <View style={styles.formHeader}>
-            <View>
-              <Text style={styles.formTitle}>{currentSection.name}</Text>
-              <Text style={styles.formSubtitle}>
-                {currentSection.elements.filter(element => element.required).length} required fields
-              </Text>
-            </View>
-            <View style={styles.formIcon}>
-              <Ionicons name="list-outline" size={20} color={colors.primary} />
-            </View>
-          </View>
-
-          {currentSection.elements.map(element => (
-            <View key={element.code} style={styles.fieldContainer}>
-              <View style={styles.fieldHeader}>
-                <Text style={[styles.fieldLabel, element.required && styles.fieldLabelRequired]}>
-                  {element.name}
-                  {element.required && <Text style={styles.requiredAsterisk}> *</Text>}
-                </Text>
-                {element.valueSetId != null && <Text style={styles.valueSetBadge}>List</Text>}
-              </View>
-              <Text style={styles.fieldHelp}>{element.definition}</Text>
-              {renderField(element)}
-              {errors.some(error => error.includes(element.code)) && (
-                <Text style={styles.fieldError}>{errors.find(error => error.includes(element.code))}</Text>
-              )}
-            </View>
-          ))}
+      <Card>
+        <View style={{ marginBottom: theme.spacing.lg, gap: 2 }}>
+          <Text variant="heading">{current.name}</Text>
+          {current.description ? (
+            <Text variant="caption" tone="tertiary">
+              {current.description}
+            </Text>
+          ) : null}
         </View>
-      )}
 
-      <View style={styles.actions}>
-        <TouchableOpacity style={styles.draftButton} onPress={handleSaveDraft} disabled={isSubmitting}>
-          <Text style={styles.draftButtonText}>Save Draft</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.submitButton, isSubmitting && styles.submitButtonDisabled]}
+        {current.elements.map(element => (
+          <NemsisField
+            key={element.code}
+            element={element}
+            value={formData[current.id]?.[element.code] ?? ''}
+            error={errorsByCode[element.code]}
+            onChange={value => setValue(current.id, element.code, value)}
+          />
+        ))}
+      </Card>
+
+      <View style={{ gap: theme.spacing.sm }}>
+        <Button
+          label="Submit report"
           onPress={handleSubmit}
-          disabled={isSubmitting}
-        >
-          {isSubmitting ? (
-            <ActivityIndicator size="small" color={colors.textInverse} />
-          ) : (
-            <>
-              <Text style={styles.submitButtonText}>Submit Report</Text>
-              <Ionicons name="arrow-forward" size={18} color={colors.textInverse} />
-            </>
-          )}
-        </TouchableOpacity>
+          fullWidth
+          size="lg"
+          icon="checkmark-done"
+        />
+        {errors.length > 0 ? (
+          <View
+            style={{
+              flexDirection: 'row',
+              gap: theme.spacing.sm,
+              padding: theme.spacing.md,
+              borderRadius: theme.borderRadius.md,
+              backgroundColor: theme.colors.warningSurface,
+            }}
+            accessibilityLiveRegion="polite"
+          >
+            <Text variant="caption" tone="abnormal" style={{ flex: 1 }}>
+              {errors.length} required field{errors.length === 1 ? '' : 's'} still to complete.
+            </Text>
+          </View>
+        ) : null}
       </View>
-    </ScrollView>
+    </Screen>
   );
 };
 
-const fieldInputStyle = {
-  minHeight: layout.controlHeight,
-  paddingHorizontal: spacing.md,
-  borderRadius: borderRadius.md,
-  backgroundColor: colors.fill,
-  color: colors.textPrimary,
-  fontFamily: typography.systemFont,
-  fontSize: typography.sizes.md,
-};
+interface FieldProps {
+  element: FormElementConfig;
+  value: string;
+  error?: string;
+  onChange: (value: string) => void;
+}
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: colors.background,
-  },
-  content: {
-    width: '100%',
-    maxWidth: layout.formMaxWidth,
-    alignSelf: 'center',
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.xl,
-    paddingBottom: layout.tabBarHeight + spacing.xxl,
-  },
-  reportHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: spacing.lg,
-  },
-  eyebrow: {
-    ...typography.styles.footnote,
-    color: colors.primary,
-    fontWeight: '600',
-    marginBottom: spacing.xs,
-  },
-  reportTitle: {
-    ...typography.styles.largeTitle,
-    color: colors.textPrimary,
-  },
-  reportSubtitle: {
-    ...typography.styles.subheadline,
-    color: colors.textSecondary,
-    marginTop: spacing.xs,
-  },
-  draftBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.xs,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xs,
-    borderRadius: borderRadius.full,
-    backgroundColor: colors.primaryLight,
-  },
-  draftText: {
-    ...typography.styles.caption2,
-    color: colors.primary,
-    fontWeight: '600',
-  },
-  sectionTabs: {
-    gap: spacing.sm,
-    paddingBottom: spacing.md,
-  },
-  sectionTab: {
-    minHeight: 38,
-    justifyContent: 'center',
-    paddingHorizontal: spacing.md,
-    borderRadius: borderRadius.full,
-    backgroundColor: colors.fill,
-  },
-  sectionTabActive: {
-    backgroundColor: colors.primary,
-  },
-  sectionTabText: {
-    ...typography.styles.footnote,
-    color: colors.textSecondary,
-    fontWeight: '600',
-  },
-  sectionTabTextActive: {
-    color: colors.textInverse,
-  },
-  formCard: {
-    padding: spacing.lg,
-    borderRadius: borderRadius.lg,
-    backgroundColor: colors.surface,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.border,
-    ...shadows.sm,
-  },
-  formHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: spacing.xl,
-  },
-  formTitle: {
-    ...typography.styles.title2,
-    color: colors.textPrimary,
-  },
-  formSubtitle: {
-    ...typography.styles.footnote,
-    color: colors.textSecondary,
-    marginTop: spacing.xs,
-  },
-  formIcon: {
-    width: 42,
-    height: 42,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: borderRadius.md,
-    backgroundColor: colors.primaryLight,
-  },
-  fieldContainer: {
-    marginBottom: spacing.lg,
-  },
-  fieldHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: spacing.xs,
-  },
-  fieldLabel: {
-    ...typography.styles.headline,
-    color: colors.textPrimary,
-    flex: 1,
-  },
-  fieldLabelRequired: {
-    color: colors.error,
-  },
-  requiredAsterisk: {
-    color: colors.error,
-  },
-  valueSetBadge: {
-    ...typography.styles.caption2,
-    color: colors.primary,
-    backgroundColor: colors.primaryLight,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 2,
-    borderRadius: borderRadius.full,
-  },
-  fieldHelp: {
-    ...typography.styles.footnote,
-    color: colors.textSecondary,
-    marginBottom: spacing.sm,
-  },
-  input: fieldInputStyle,
-  textarea: {
-    ...fieldInputStyle,
-    minHeight: 108,
-    paddingTop: spacing.md,
-    textAlignVertical: 'top',
-  },
-  selectButton: {
-    ...fieldInputStyle,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  selectValue: {
-    ...typography.styles.body,
-    color: colors.textPrimary,
-  },
-  selectPlaceholder: {
-    ...typography.styles.body,
-    color: colors.textTertiary,
-  },
-  radioGroup: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: spacing.sm,
-  },
-  radioOption: {
-    minHeight: 44,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-    paddingHorizontal: spacing.md,
-    borderRadius: borderRadius.full,
-    backgroundColor: colors.fill,
-  },
-  radioOptionSelected: {
-    backgroundColor: colors.primaryLight,
-  },
-  radioCircle: {
-    width: 18,
-    height: 18,
-    borderRadius: borderRadius.full,
-    borderWidth: 2,
-    borderColor: colors.disabled,
-  },
-  radioCircleSelected: {
-    borderColor: colors.primary,
-    backgroundColor: colors.primary,
-  },
-  radioLabel: {
-    ...typography.styles.footnote,
-    color: colors.textPrimary,
-  },
-  datetimeButton: {
-    ...fieldInputStyle,
-    justifyContent: 'center',
-  },
-  datetimeValue: {
-    ...typography.styles.body,
-    color: colors.textPrimary,
-  },
-  datetimePlaceholder: {
-    ...typography.styles.body,
-    color: colors.textTertiary,
-  },
-  dateButton: {
-    ...fieldInputStyle,
-    justifyContent: 'center',
-  },
-  dateValue: {
-    ...typography.styles.body,
-    color: colors.textPrimary,
-  },
-  datePlaceholder: {
-    ...typography.styles.body,
-    color: colors.textTertiary,
-  },
-  gpsInputs: {
-    flexDirection: 'row',
-    gap: spacing.md,
-  },
-  gpsInput: {
-    ...fieldInputStyle,
-    flex: 1,
-  },
-  fieldError: {
-    ...typography.styles.caption,
-    color: colors.error,
-    marginTop: spacing.xs,
-  },
-  actions: {
-    flexDirection: 'row',
-    gap: spacing.md,
-    marginTop: spacing.lg,
-  },
-  draftButton: {
-    flex: 1,
-    minHeight: 50,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: borderRadius.md,
-    backgroundColor: colors.surface,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.border,
-  },
-  draftButtonText: {
-    ...typography.styles.headline,
-    color: colors.textPrimary,
-  },
-  submitButton: {
-    flex: 1.4,
-    minHeight: 50,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: spacing.sm,
-    borderRadius: borderRadius.md,
-    backgroundColor: colors.primary,
-  },
-  submitButtonDisabled: {
-    backgroundColor: colors.disabled,
-  },
-  submitButtonText: {
-    ...typography.styles.headline,
-    color: colors.textInverse,
-  },
-});
+const NemsisField: React.FC<FieldProps> = ({ element, value, error, onChange }) => {
+  const valueSet = useMemo(
+    () => getValueSetForElement(element as never),
+    [element]
+  );
+
+  const options = useMemo(
+    () =>
+      (valueSet?.values ?? []).map(option => ({
+        value: option.code,
+        label: option.label,
+      })),
+    [valueSet]
+  );
+
+  const help = element.definition
+    ? element.definition.length > 140
+      ? `${element.definition.slice(0, 140)}…`
+      : element.definition
+    : undefined;
+
+  const hint = CONTROL_LABEL[element.controlType];
+
+  const label = `${element.name} (${element.code})`;
+
+  switch (element.controlType) {
+    case 'select':
+    case 'radio':
+    case 'multiselect':
+      return (
+        <SelectField
+          label={label}
+          required={element.required}
+          hint={hint}
+          help={help}
+          error={error}
+          value={value}
+          options={options}
+          onChange={onChange}
+        />
+      );
+    case 'datetime':
+      return (
+        <DateTimeField
+          label={label}
+          required={element.required}
+          hint={hint}
+          help={help}
+          error={error}
+          value={value || undefined}
+          onChange={onChange}
+        />
+      );
+    case 'date':
+      return (
+        <DateTimeField
+          label={label}
+          required={element.required}
+          hint={hint}
+          help={help}
+          error={error}
+          value={value || undefined}
+          onChange={onChange}
+          dateOnly
+        />
+      );
+    case 'textarea':
+      return (
+        <TextField
+          label={label}
+          required={element.required}
+          hint={hint}
+          help={help}
+          error={error}
+          value={value}
+          onChangeText={onChange}
+          multiline
+          numberOfLines={4}
+          placeholder="Enter narrative…"
+        />
+      );
+    case 'number':
+      return (
+        <TextField
+          label={label}
+          required={element.required}
+          hint={hint}
+          help={help}
+          error={error}
+          value={value}
+          onChangeText={onChange}
+          keyboardType="decimal-pad"
+        />
+      );
+    default:
+      return (
+        <TextField
+          label={label}
+          required={element.required}
+          hint={hint}
+          help={help}
+          error={error}
+          value={value}
+          onChangeText={onChange}
+        />
+      );
+  }
+};

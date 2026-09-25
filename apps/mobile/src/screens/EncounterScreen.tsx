@@ -1,609 +1,381 @@
-import React from 'react';
-import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import React, { useCallback, useMemo } from 'react';
+import { View } from 'react-native';
+import { useNavigation } from '@react-navigation/native';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useDispatch, useSelector } from 'react-redux';
-import { RootState, AppDispatch } from '../store';
+import {
+  Badge,
+  Button,
+  Card,
+  Divider,
+  EmptyState,
+  Screen,
+  ScreenHeader,
+  Section,
+  Text,
+  useTheme,
+} from '@prehospital-epr/ui';
+import { assessVitalSignsSet, worstVitalLevel } from '@prehospital-epr/clinical';
+import { AppDispatch, RootState } from '../store';
 import { updateEncounterStatus } from '../store/encounterSlice';
-import { colors, spacing, typography, borderRadius, shadows, layout } from '../theme';
+import type { MainStackParamList } from '../navigation/AppNavigator';
+import {
+  ENCOUNTER_PRIORITY_TONES,
+  ENCOUNTER_STATUS_LABELS,
+  formatClock,
+  formatDate,
+  formatDuration,
+  nextEncounterStatus,
+  patientAgeLabel,
+  patientDisplayName,
+  patientMrn,
+} from '../utils/format';
+
+type Nav = NativeStackNavigationProp<MainStackParamList>;
+
+/** The prehospital sequence, rendered as a progress tracker. */
+const TRACKER: Array<{ status: string; label: string }> = [
+  { status: 'arrived', label: 'Arrived' },
+  { status: 'triaged', label: 'Triaged' },
+  { status: 'on-scene', label: 'On scene' },
+  { status: 'in-transit', label: 'Transit' },
+  { status: 'at-destination', label: 'Arrived' },
+  { status: 'finished', label: 'Handover' },
+];
+
+const ACTIONS = [
+  { key: 'vitals', label: 'Vital Signs', icon: 'pulse-outline' },
+  { key: 'medications', label: 'Medications', icon: 'medkit-outline' },
+  { key: 'procedures', label: 'Procedures', icon: 'cut-outline' },
+  { key: 'notes', label: 'Notes', icon: 'create-outline' },
+  { key: 'handoff', label: 'Handoff', icon: 'swap-horizontal-outline' },
+  { key: 'report', label: 'PCR', icon: 'document-text-outline' },
+] as const;
 
 export const EncounterScreen: React.FC = () => {
+  const theme = useTheme();
+  const navigation = useNavigation<Nav>();
   const dispatch = useDispatch<AppDispatch>();
-  const { currentEncounter, encounters, activeEncounterId } = useSelector((state: RootState) => state.encounter);
-  const { currentPatient } = useSelector((state: RootState) => state.patient);
-  const { vitalSigns, currentVitalSigns } = useSelector((state: RootState) => state.observation);
 
-  const encounter = currentEncounter || (activeEncounterId ? encounters.find(e => e.id === activeEncounterId) : null);
+  const currentEncounter = useSelector((state: RootState) => state.encounter.currentEncounter);
+  const currentPatient = useSelector((state: RootState) => state.patient.currentPatient);
+  const vitalSigns = useSelector((state: RootState) => state.observation.vitalSigns);
 
-  const statusOptions = [
-    { value: 'planned', label: 'Planned', color: colors.info },
-    { value: 'arrived', label: 'On Scene', color: colors.warning },
-    { value: 'triaged', label: 'Triaged', color: colors.warning },
-    { value: 'in-progress', label: 'In Progress', color: colors.primary },
-    { value: 'in-transit', label: 'Transporting', color: colors.secondary },
-    { value: 'at-destination', label: 'At Hospital', color: colors.info },
-    { value: 'finished', label: 'Completed', color: colors.success },
-  ];
+  const latest = vitalSigns[0];
+  const latestAssessment = useMemo(
+    () => (latest ? assessVitalSignsSet(latest) : []),
+    [latest]
+  );
+  const latestLevel = useMemo(
+    () => (latestAssessment.length ? worstVitalLevel(latestAssessment) : 'unknown'),
+    [latestAssessment]
+  );
 
-  const handleStatusChange = (status: string) => {
-    if (encounter) {
-      dispatch(updateEncounterStatus({ encounterId: encounter.id, status: status as any }));
-    }
-  };
+  const upcoming = useMemo(
+    () => (currentEncounter ? nextEncounterStatus(currentEncounter.status) : null),
+    [currentEncounter]
+  );
 
-  if (!encounter) {
+  const trackerIndex = useMemo(() => {
+    if (!currentEncounter) return -1;
+    return TRACKER.findIndex(step => step.status === currentEncounter.status);
+  }, [currentEncounter]);
+
+  const handleAdvance = useCallback(() => {
+    if (!currentEncounter || !upcoming) return;
+    dispatch(
+      updateEncounterStatus({ encounterId: currentEncounter.id, status: upcoming })
+    );
+  }, [dispatch, currentEncounter, upcoming]);
+
+  const handleAction = useCallback(
+    (key: (typeof ACTIONS)[number]['key']) => {
+      const encounterId = currentEncounter?.id ?? '';
+      switch (key) {
+        case 'vitals':
+          return navigation.navigate('VitalSignsDetail', { encounterId });
+        case 'medications':
+        case 'procedures':
+        case 'notes':
+          return navigation.navigate('Interventions', { encounterId });
+        case 'handoff':
+          return navigation.navigate('Handoff', { encounterId });
+        case 'report':
+          return navigation.navigate('PatientReport', { encounterId });
+      }
+    },
+    [navigation, currentEncounter?.id]
+  );
+
+  if (!currentEncounter) {
     return (
-      <View style={styles.emptyContainer}>
-        <View style={styles.emptyIcon}>
-          <Ionicons name="pulse-outline" size={30} color={colors.primary} />
-        </View>
-        <Text style={styles.emptyTitle}>No Active Encounter</Text>
-        <Text style={styles.emptySubtitle}>Create or select an encounter to begin documentation.</Text>
-      </View>
+      <Screen>
+        <ScreenHeader title="Encounter" />
+        <Card>
+          <EmptyState
+            icon="pulse-outline"
+            title="No active encounter"
+            message="An encounter is created when you accept a job or start one from the dashboard."
+          />
+        </Card>
+      </Screen>
     );
   }
 
-  const statusOption = statusOptions.find(s => s.value === encounter.status) || statusOptions[0];
-  const foundIndex = statusOptions.findIndex(s => s.value === encounter.status);
-  const currentIndex = foundIndex < 0 ? 0 : foundIndex;
-  const nextStatus = currentIndex < statusOptions.length - 1 ? statusOptions[currentIndex + 1] : null;
-  const patientName = currentPatient?.name?.[0]?.given?.[0]
-    ? `${currentPatient.name[0].given?.[0]} ${currentPatient.name[0].family || ''}`
-    : encounter.subject?.display || 'New Patient';
-
   return (
-    <ScrollView
-      style={styles.container}
-      contentContainerStyle={styles.content}
-      showsVerticalScrollIndicator={false}
-    >
-      <View style={styles.headerCard}>
-        <View style={styles.headerTop}>
-          <View style={styles.patientInfo}>
-            <Text style={styles.eyebrow}>Encounter</Text>
-            <Text style={styles.patientName}>{patientName}</Text>
-            <Text style={styles.patientDetails}>
-              {currentPatient?.gender?.charAt(0).toUpperCase() || 'Unknown'} · {currentPatient?.birthDate ? calculateAge(currentPatient.birthDate) + ' years' : 'Age unknown'}
+    <Screen>
+      <ScreenHeader
+        title={patientDisplayName(currentPatient)}
+        subtitle={`${patientAgeLabel(currentPatient)}${
+          patientMrn(currentPatient) ? ` · MRN ${patientMrn(currentPatient)}` : ''
+        }`}
+        accessory={
+          <View style={{ alignItems: 'flex-end', gap: theme.spacing.xs }}>
+            <Badge
+              label={ENCOUNTER_STATUS_LABELS[currentEncounter.status]}
+              tone={currentEncounter.status === 'finished' ? 'success' : 'primary'}
+              dot
+            />
+            {latestLevel !== 'unknown' ? (
+              <Badge
+                label={`Vitals ${latestLevel}`}
+                tone={
+                  latestLevel === 'critical'
+                    ? 'critical'
+                    : latestLevel === 'abnormal'
+                      ? 'warning'
+                      : 'success'
+                }
+              />
+            ) : null}
+          </View>
+        }
+      />
+
+      <Card>
+        <View
+          style={{
+            flexDirection: 'row',
+            flexWrap: 'wrap',
+            gap: theme.spacing.lg,
+          }}
+        >
+          <View style={{ gap: theme.spacing.xs }}>
+            <Text variant="caption" tone="tertiary">
+              Priority
             </Text>
+            <Badge
+              label={currentEncounter.priority ? currentEncounter.priority.toUpperCase() : 'Not set'}
+              tone={
+                currentEncounter.priority
+                  ? ENCOUNTER_PRIORITY_TONES[currentEncounter.priority]
+                  : 'neutral'
+              }
+            />
           </View>
-          <View style={[styles.statusBadge, { backgroundColor: statusOption.color + '18' }]}>
-            <View style={[styles.statusBadgeDot, { backgroundColor: statusOption.color }]} />
-            <Text style={[styles.statusBadgeText, { color: statusOption.color }]}>{statusOption.label}</Text>
-          </View>
+          <Meta label="Class">{currentEncounter.class}</Meta>
+          <Meta label="Elapsed">
+            {formatDuration(currentEncounter.period?.start)}
+          </Meta>
+          <Meta label="Started">
+            {currentEncounter.period?.start ? formatClock(currentEncounter.period.start) : '—'}
+          </Meta>
         </View>
+      </Card>
 
-        <View style={styles.encounterMeta}>
-          <View style={styles.metaItem}>
-            <Text style={styles.metaLabel}>Unit</Text>
-            <Text style={styles.metaValue}>Medic 12 · ALS</Text>
-          </View>
-          <View style={styles.metaItem}>
-            <Text style={styles.metaLabel}>Priority</Text>
-            <Text style={[styles.metaValue, { color: getPriorityColor(encounter.priority || 'urgent') }]}>
-              {encounter.priority?.toUpperCase() || 'URGENT'}
-            </Text>
-          </View>
-          <View style={styles.metaItem}>
-            <Text style={styles.metaLabel}>Duration</Text>
-            <Text style={styles.metaValue}>{calculateDuration(encounter.period.start || new Date().toISOString())}</Text>
-          </View>
-          <View style={styles.metaItem}>
-            <Text style={styles.metaLabel}>Incident #</Text>
-            <Text style={styles.metaValue}>{(encounter.id || '').slice(-8)}</Text>
-          </View>
-        </View>
-
-        {nextStatus && (
-          <TouchableOpacity
-            style={[styles.nextStatusButton, { backgroundColor: nextStatus.color }]}
-            onPress={() => handleStatusChange(nextStatus.value)}
-          >
-            <Text style={styles.nextStatusButtonText}>Move to {nextStatus.label}</Text>
-            <Ionicons name="arrow-forward" size={18} color={colors.textInverse} />
-          </TouchableOpacity>
-        )}
-      </View>
-
-      <Text style={styles.sectionLabel}>Encounter progress</Text>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.progressContent}>
-        {statusOptions.map((opt, index) => (
-          <TouchableOpacity
-            key={opt.value}
-            style={styles.progressItem}
-            onPress={() => handleStatusChange(opt.value)}
-            disabled={index > currentIndex + 1}
-          >
-            <View
-              style={[
-                styles.progressStep,
-                {
-                  backgroundColor: index <= currentIndex ? opt.color : colors.fill,
-                  borderColor: index === currentIndex ? opt.color : colors.separator,
-                },
-              ]}
-            >
-              {index < currentIndex && <Ionicons name="checkmark" size={16} color={colors.textInverse} />}
-              {index === currentIndex && <Text style={styles.progressCurrent}>{index + 1}</Text>}
-              {index > currentIndex && <Text style={styles.progressNumber}>{index + 1}</Text>}
-            </View>
-            <Text style={[styles.progressLabel, { color: index <= currentIndex ? opt.color : colors.textTertiary }]}>
-              {opt.label}
-            </Text>
-          </TouchableOpacity>
-        ))}
-      </ScrollView>
-
-      <View style={styles.section}>
-        <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>Quick Actions</Text>
-          <Text style={styles.sectionHint}>Common documentation</Text>
-        </View>
-        <View style={styles.actionGrid}>
-          {[
-            { label: 'Vital Signs', icon: 'speedometer-outline' as const },
-            { label: 'Medications', icon: 'medical-outline' as const },
-            { label: 'Procedures', icon: 'construct-outline' as const },
-            { label: 'Notes', icon: 'create-outline' as const },
-            { label: 'Handoff', icon: 'swap-horizontal-outline' as const },
-            { label: 'Protocols', icon: 'document-text-outline' as const },
-          ].map(action => (
-            <TouchableOpacity
-              key={action.label}
-              style={styles.actionButton}
-              onPress={() => {}}
-            >
-              <View style={styles.actionButtonIcon}>
-                <Ionicons name={action.icon} size={22} color={colors.primary} />
-              </View>
-              <Text style={styles.actionButtonText}>{action.label}</Text>
-            </TouchableOpacity>
-          ))}
-        </View>
-      </View>
-
-      {currentVitalSigns && (
-        <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>Latest Vital Signs</Text>
-            <Text style={styles.vitalsTime}>{new Date(currentVitalSigns.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</Text>
-          </View>
-          <View style={styles.vitalsGrid}>
-            {currentVitalSigns.systolicBP && currentVitalSigns.diastolicBP && (
-              <View style={styles.vitalCard}>
-                <Text style={styles.vitalLabel}>BP</Text>
-                <Text style={styles.vitalValue}>{currentVitalSigns.systolicBP.value}/{currentVitalSigns.diastolicBP.value}</Text>
-                <Text style={styles.vitalUnit}>mmHg</Text>
-              </View>
-            )}
-            {currentVitalSigns.heartRate && (
-              <View style={styles.vitalCard}>
-                <Text style={styles.vitalLabel}>HR</Text>
-                <Text style={styles.vitalValue}>{currentVitalSigns.heartRate.value}</Text>
-                <Text style={styles.vitalUnit}>/min</Text>
-              </View>
-            )}
-            {currentVitalSigns.respiratoryRate && (
-              <View style={styles.vitalCard}>
-                <Text style={styles.vitalLabel}>RR</Text>
-                <Text style={styles.vitalValue}>{currentVitalSigns.respiratoryRate.value}</Text>
-                <Text style={styles.vitalUnit}>/min</Text>
-              </View>
-            )}
-            {currentVitalSigns.spo2 && (
-              <View style={styles.vitalCard}>
-                <Text style={styles.vitalLabel}>SpO₂</Text>
-                <Text style={styles.vitalValue}>{currentVitalSigns.spo2.value}</Text>
-                <Text style={styles.vitalUnit}>%</Text>
-              </View>
-            )}
-            {currentVitalSigns.etco2 && (
-              <View style={styles.vitalCard}>
-                <Text style={styles.vitalLabel}>EtCO₂</Text>
-                <Text style={styles.vitalValue}>{currentVitalSigns.etco2.value}</Text>
-                <Text style={styles.vitalUnit}>mmHg</Text>
-              </View>
-            )}
-            {currentVitalSigns.gcs && (
-              <View style={styles.vitalCard}>
-                <Text style={styles.vitalLabel}>GCS</Text>
-                <Text style={styles.vitalValue}>{currentVitalSigns.gcs.total}</Text>
-                <Text style={styles.vitalUnit}>E{currentVitalSigns.gcs.eye} V{currentVitalSigns.gcs.verbal} M{currentVitalSigns.gcs.motor}</Text>
-              </View>
-            )}
-          </View>
+      {upcoming ? (
+        <Button
+          label={`Move to ${ENCOUNTER_STATUS_LABELS[upcoming].toLowerCase()}`}
+          onPress={handleAdvance}
+          fullWidth
+          size="lg"
+          icon="arrow-forward"
+        />
+      ) : (
+        <View
+          style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: theme.spacing.sm,
+            padding: theme.spacing.md,
+            borderRadius: theme.borderRadius.md,
+            backgroundColor: theme.colors.successSurface,
+          }}
+        >
+          <Text variant="subheading" tone="normal">
+            Encounter closed
+          </Text>
         </View>
       )}
 
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Timeline</Text>
-        <View style={styles.timeline}>
-          <TimelineItem time={formatTime(encounter.period.start || new Date().toISOString())} title="Encounter Started" description={`Priority: ${encounter.priority || 'urgent'}`} color={colors.info} isFirst />
-          {encounter.status !== 'planned' && (
-            <TimelineItem time={formatTime(new Date().toISOString())} title={getStatusLabel(encounter.status)} description="Status updated" color={statusOption.color} />
-          )}
-          {vitalSigns.length > 0 && (
-            <TimelineItem time={formatTime(vitalSigns[vitalSigns.length - 1].timestamp || new Date().toISOString())} title="Vital Signs Recorded" description={`${vitalSigns.length} sets recorded`} color={colors.primary} />
-          )}
+      <Section title="Progress">
+        <Card>
+          <View style={{ flexDirection: 'row', gap: theme.spacing.xs }}>
+            {TRACKER.map((step, index) => {
+              const done = trackerIndex >= 0 && index <= trackerIndex;
+              return (
+                <View key={step.status} style={{ flex: 1, gap: theme.spacing.xs }}>
+                  <View
+                    style={{
+                      height: 4,
+                      borderRadius: 2,
+                      backgroundColor: done
+                        ? theme.colors.primary
+                        : theme.colors.surfaceSunken,
+                    }}
+                  />
+                  <Text
+                    variant="caption"
+                    tone={done ? 'primary-accent' : 'tertiary'}
+                    numberOfLines={1}
+                  >
+                    {step.label}
+                  </Text>
+                </View>
+              );
+            })}
+          </View>
+        </Card>
+      </Section>
+
+      <Section title="Actions">
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: theme.spacing.sm }}>
+          {ACTIONS.map(action => (
+            <Button
+              key={action.key}
+              label={action.label}
+              icon={action.icon as never}
+              variant="secondary"
+              size="sm"
+              onPress={() => handleAction(action.key)}
+              style={{ flexGrow: 1, flexBasis: '30%' }}
+            />
+          ))}
         </View>
-      </View>
-    </ScrollView>
+      </Section>
+
+      <Section
+        title="Latest vital signs"
+        meta={latest ? formatClock(latest.timestamp) : undefined}
+        action={{ label: 'Record', onPress: () => handleAction('vitals') }}
+      >
+        <Card padded={false}>
+          {latestAssessment.length === 0 ? (
+            <EmptyState
+              icon="stats-chart-outline"
+              title="No observations"
+              message="Record a set of observations to see them flagged against reference ranges."
+              action={{ label: 'Record vitals', onPress: () => handleAction('vitals') }}
+            />
+          ) : (
+            <View style={{ padding: theme.spacing.lg, gap: theme.spacing.md }}>
+              <View
+                style={{
+                  flexDirection: 'row',
+                  flexWrap: 'wrap',
+                  gap: theme.spacing.md,
+                }}
+              >
+                {latestAssessment.map(item => (
+                  <View
+                    key={item.key}
+                    style={{
+                      minWidth: 92,
+                      gap: 2,
+                      paddingLeft: theme.spacing.sm,
+                      borderLeftWidth: 3,
+                      borderLeftColor: theme.colors.vitals[item.level],
+                    }}
+                  >
+                    <Text variant="caption" tone="tertiary">
+                      {item.label}
+                    </Text>
+                    <Text
+                      variant="subheading"
+                      style={{ color: theme.colors.vitals[item.level] }}
+                    >
+                      {item.value} {item.unit}
+                    </Text>
+                  </View>
+                ))}
+              </View>
+              {latest?.gcs ? (
+                <>
+                  <Divider />
+                  <Text variant="caption" tone="secondary">
+                    GCS {latest.gcs.total} (E{latest.gcs.eye} V{latest.gcs.verbal} M
+                    {latest.gcs.motor})
+                  </Text>
+                </>
+              ) : null}
+            </View>
+          )}
+        </Card>
+      </Section>
+
+      <Section title="Timeline">
+        <Card padded={false}>
+          <TimelineRow
+            label="Encounter opened"
+            at={currentEncounter.period?.start}
+            icon="enter-outline"
+          />
+          {latest ? (
+            <TimelineRow
+              label="Vital signs recorded"
+              at={latest.timestamp}
+              icon="pulse-outline"
+            />
+          ) : null}
+          <TimelineRow
+            label="Created"
+            at={currentEncounter.meta?.lastUpdated}
+            icon="add-circle-outline"
+            last
+          />
+        </Card>
+      </Section>
+    </Screen>
   );
 };
 
-function calculateAge(dob: string): number {
-  const today = new Date();
-  const birth = new Date(dob);
-  let age = today.getFullYear() - birth.getFullYear();
-  const monthDiff = today.getMonth() - birth.getMonth();
-  if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birth.getDate())) age--;
-  return age;
-}
-
-function calculateDuration(start: string): string {
-  const diff = Date.now() - new Date(start).getTime();
-  const hours = Math.floor(diff / (1000 * 60 * 60));
-  const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
-  return `${hours}h ${minutes}m`;
-}
-
-function formatTime(isoString: string): string {
-  return new Date(isoString).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
-}
-
-function getStatusLabel(status: string): string {
-  const labels: Record<string, string> = {
-    arrived: 'Arrived on Scene',
-    triaged: 'Patient Triaged',
-    'in-progress': 'Treatment Initiated',
-    'in-transit': 'Transport Started',
-    'at-destination': 'Arrived at Hospital',
-    finished: 'Encounter Completed',
-  };
-  return labels[status] || status;
-}
-
-function getPriorityColor(priority: string): string {
-  const priorityColors: Record<string, string> = {
-    routine: colors.info,
-    urgent: colors.warning,
-    emergent: colors.error,
-    critical: colors.error,
-  };
-  return priorityColors[priority] || colors.textPrimary;
-}
-
-const TimelineItem: React.FC<{
-  time: string;
-  title: string;
-  description: string;
-  color: string;
-  isFirst?: boolean;
-}> = ({ time, title, description, color, isFirst }) => (
-  <View style={styles.timelineItem}>
-    <View style={styles.timelineLine}>
-      <View style={[styles.timelineDot, { backgroundColor: color }, isFirst && styles.timelineDotFirst]} />
-      <View style={styles.timelineConnector} />
+const Meta: React.FC<{ label: string; children: React.ReactNode }> = ({ label, children }) => {
+  return (
+    <View style={{ minWidth: 84, gap: 2 }}>
+      <Text variant="caption" tone="tertiary">
+        {label}
+      </Text>
+      <Text variant="subheading" numberOfLines={1}>
+        {children}
+      </Text>
     </View>
-    <View style={styles.timelineContent}>
-      <View style={styles.timelineHeader}>
-        <Text style={styles.timelineTime}>{time}</Text>
-        <Text style={[styles.timelineTitle, { color }]}>{title}</Text>
-      </View>
-      <Text style={styles.timelineDescription}>{description}</Text>
-    </View>
-  </View>
-);
+  );
+};
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: colors.background,
-  },
-  content: {
-    width: '100%',
-    maxWidth: layout.contentMaxWidth,
-    alignSelf: 'center',
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.xl,
-    paddingBottom: layout.tabBarHeight + spacing.xxl,
-  },
-  emptyContainer: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: spacing.xl,
-    backgroundColor: colors.background,
-  },
-  emptyIcon: {
-    width: 64,
-    height: 64,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: borderRadius.lg,
-    backgroundColor: colors.primaryLight,
-  },
-  emptyTitle: {
-    ...typography.styles.title2,
-    color: colors.textPrimary,
-    marginTop: spacing.md,
-  },
-  emptySubtitle: {
-    ...typography.styles.subheadline,
-    color: colors.textSecondary,
-    textAlign: 'center',
-    marginTop: spacing.xs,
-  },
-  headerCard: {
-    padding: spacing.lg,
-    borderRadius: borderRadius.lg,
-    backgroundColor: colors.surface,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.border,
-    ...shadows.sm,
-  },
-  headerTop: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    justifyContent: 'space-between',
-  },
-  patientInfo: {
-    flex: 1,
-    paddingRight: spacing.md,
-  },
-  eyebrow: {
-    ...typography.styles.footnote,
-    color: colors.primary,
-    fontWeight: '600',
-    marginBottom: spacing.xs,
-  },
-  patientName: {
-    ...typography.styles.title1,
-    color: colors.textPrimary,
-  },
-  patientDetails: {
-    ...typography.styles.subheadline,
-    color: colors.textSecondary,
-    marginTop: spacing.xs,
-  },
-  statusBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.xs,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xs,
-    borderRadius: borderRadius.full,
-  },
-  statusBadgeDot: {
-    width: 7,
-    height: 7,
-    borderRadius: borderRadius.full,
-  },
-  statusBadgeText: {
-    ...typography.styles.caption,
-    fontWeight: '600',
-  },
-  encounterMeta: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: spacing.md,
-    marginTop: spacing.lg,
-    paddingTop: spacing.md,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: colors.separator,
-  },
-  metaItem: {
-    minWidth: '42%',
-    flexGrow: 1,
-  },
-  metaLabel: {
-    ...typography.styles.caption2,
-    color: colors.textTertiary,
-    marginBottom: 2,
-  },
-  metaValue: {
-    ...typography.styles.footnote,
-    color: colors.textPrimary,
-    fontWeight: '600',
-  },
-  nextStatusButton: {
-    minHeight: 48,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: spacing.sm,
-    marginTop: spacing.lg,
-    borderRadius: borderRadius.md,
-  },
-  nextStatusButtonText: {
-    ...typography.styles.headline,
-    color: colors.textInverse,
-  },
-  pressed: {
-    opacity: 0.7,
-  },
-  sectionLabel: {
-    ...typography.styles.footnote,
-    color: colors.textSecondary,
-    fontWeight: '600',
-    marginTop: spacing.xl,
-    marginBottom: spacing.sm,
-    marginLeft: spacing.xxs,
-  },
-  progressContent: {
-    gap: spacing.sm,
-    paddingBottom: spacing.xs,
-  },
-  progressItem: {
-    width: 82,
-    alignItems: 'center',
-  },
-  progressStep: {
-    width: 34,
-    height: 34,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: borderRadius.full,
-    borderWidth: 2,
-    marginBottom: spacing.xs,
-  },
-  progressCurrent: {
-    ...typography.styles.footnote,
-    color: colors.textInverse,
-    fontWeight: '700',
-  },
-  progressNumber: {
-    ...typography.styles.footnote,
-    color: colors.textTertiary,
-    fontWeight: '600',
-  },
-  progressLabel: {
-    ...typography.styles.caption2,
-    fontWeight: '600',
-    textAlign: 'center',
-  },
-  section: {
-    marginTop: spacing.xl,
-  },
-  sectionHeader: {
-    flexDirection: 'row',
-    alignItems: 'baseline',
-    justifyContent: 'space-between',
-    marginBottom: spacing.md,
-  },
-  sectionTitle: {
-    ...typography.styles.title3,
-    color: colors.textPrimary,
-  },
-  sectionHint: {
-    ...typography.styles.footnote,
-    color: colors.textTertiary,
-  },
-  actionGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: spacing.md,
-  },
-  actionButton: {
-    flexGrow: 1,
-    flexBasis: 120,
-    minHeight: 94,
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: spacing.sm,
-    borderRadius: borderRadius.md,
-    backgroundColor: colors.surface,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.border,
-  },
-  actionButtonIcon: {
-    width: 42,
-    height: 42,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: borderRadius.md,
-    backgroundColor: colors.primaryLight,
-    marginBottom: spacing.sm,
-  },
-  actionButtonText: {
-    ...typography.styles.footnote,
-    color: colors.textPrimary,
-    fontWeight: '600',
-    textAlign: 'center',
-  },
-  vitalsTime: {
-    ...typography.styles.footnote,
-    color: colors.textTertiary,
-  },
-  vitalsGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    overflow: 'hidden',
-    borderRadius: borderRadius.lg,
-    backgroundColor: colors.surface,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.border,
-  },
-  vitalCard: {
-    flexGrow: 1,
-    flexBasis: 100,
-    minHeight: 92,
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: spacing.md,
-    borderRightWidth: StyleSheet.hairlineWidth,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.separator,
-  },
-  vitalLabel: {
-    ...typography.styles.caption2,
-    color: colors.textTertiary,
-    fontWeight: '600',
-    marginBottom: spacing.xs,
-  },
-  vitalValue: {
-    ...typography.styles.title2,
-    color: colors.textPrimary,
-  },
-  vitalUnit: {
-    ...typography.styles.caption2,
-    color: colors.textSecondary,
-    marginTop: 2,
-  },
-  timeline: {
-    overflow: 'hidden',
-    borderRadius: borderRadius.lg,
-    backgroundColor: colors.surface,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.border,
-    paddingHorizontal: spacing.md,
-  },
-  timelineItem: {
-    flexDirection: 'row',
-    minHeight: 70,
-  },
-  timelineLine: {
-    width: 24,
-    alignItems: 'center',
-    paddingTop: spacing.md,
-  },
-  timelineDot: {
-    width: 12,
-    height: 12,
-    borderRadius: borderRadius.full,
-    zIndex: 1,
-  },
-  timelineDotFirst: {
-    width: 16,
-    height: 16,
-    borderRadius: borderRadius.full,
-    borderWidth: 3,
-    borderColor: colors.surface,
-  },
-  timelineConnector: {
-    flex: 1,
-    width: 2,
-    backgroundColor: colors.separator,
-  },
-  timelineContent: {
-    flex: 1,
-    paddingLeft: spacing.md,
-    paddingVertical: spacing.md,
-  },
-  timelineHeader: {
-    flexDirection: 'row',
-    alignItems: 'baseline',
-    gap: spacing.sm,
-  },
-  timelineTime: {
-    ...typography.styles.caption2,
-    color: colors.textTertiary,
-  },
-  timelineTitle: {
-    ...typography.styles.footnote,
-    fontWeight: '600',
-  },
-  timelineDescription: {
-    ...typography.styles.caption,
-    color: colors.textSecondary,
-    marginTop: 2,
-  },
-});
+const TimelineRow: React.FC<{
+  label: string;
+  at?: string;
+  icon: string;
+  last?: boolean;
+}> = ({ label, at, icon, last }) => {
+  const theme = useTheme();
+  return (
+    <View
+      style={{
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: theme.spacing.md,
+        padding: theme.spacing.lg,
+        borderBottomWidth: last ? 0 : 1,
+        borderBottomColor: theme.colors.separator,
+      }}
+    >
+      <Text variant="subheading" style={{ flex: 1 }} numberOfLines={1}>
+        {label}
+      </Text>
+      <Text variant="caption" tone="tertiary">
+        {at ? formatDate(at) : '—'}
+      </Text>
+    </View>
+  );
+};

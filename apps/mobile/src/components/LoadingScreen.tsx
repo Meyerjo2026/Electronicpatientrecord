@@ -1,52 +1,46 @@
 import React from 'react';
-import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { colors, spacing, typography } from '../theme';
+import { useTheme, Text } from '@prehospital-epr/ui';
 
-interface LoadingScreenProps {
+export interface LoadingScreenProps {
   message?: string;
 }
 
-export const LoadingScreen: React.FC<LoadingScreenProps> = ({ message = 'Loading' }) => (
-  <View style={styles.container}>
-    <View style={styles.mark}>
-      <Ionicons name="medical" size={30} color={colors.primary} />
-    </View>
-    <Text style={styles.title}>Prehospital EPR</Text>
-    <ActivityIndicator size="small" color={colors.primary} style={styles.indicator} />
-    <Text style={styles.message}>{message}</Text>
-  </View>
-);
+export const LoadingScreen: React.FC<LoadingScreenProps> = ({
+  message = 'Loading',
+}) => {
+  const theme = useTheme();
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: colors.background,
-  },
-  mark: {
-    width: 64,
-    height: 64,
-    borderRadius: 18,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: colors.primaryLight,
-  },
-  title: {
-    marginTop: spacing.md,
-    color: colors.textPrimary,
-    fontFamily: typography.systemFont,
-    fontSize: typography.sizes.lg,
-    fontWeight: '700',
-  },
-  indicator: {
-    marginTop: spacing.xl,
-  },
-  message: {
-    marginTop: spacing.sm,
-    color: colors.textSecondary,
-    fontFamily: typography.systemFont,
-    fontSize: typography.sizes.sm,
-  },
-});
+  return (
+    <View
+      style={{
+        flex: 1,
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: theme.colors.background,
+        gap: theme.spacing.lg,
+      }}
+      accessibilityRole="progressbar"
+      accessibilityLabel={message}
+    >
+      <View
+        style={{
+          width: 64,
+          height: 64,
+          alignItems: 'center',
+          justifyContent: 'center',
+          borderRadius: theme.borderRadius.lg,
+          backgroundColor: theme.colors.primarySurface,
+        }}
+      >
+        <Ionicons name="medical" size={30} color={theme.colors.primary} />
+      </View>
+      <Text variant="heading">Prehospital EPR</Text>
+      <ActivityIndicator size="small" color={theme.colors.primary} />
+      <Text variant="caption" tone="tertiary">
+        {message}
+      </Text>
+    </View>
+  );
+};

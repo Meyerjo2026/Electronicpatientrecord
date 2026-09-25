@@ -12,7 +12,7 @@ interface AuthState {
 }
 
 const initialState: AuthState = {
-  isAuthenticated: true, // Set to true for demo/testing
+  isAuthenticated: false,
   isLoading: false,
   session: null,
   error: null,
@@ -20,85 +20,93 @@ const initialState: AuthState = {
   pinEnabled: false,
 };
 
-// Mock authentication - replace with actual API calls
+/** Shift length; the session is re-authenticated at the end of it. */
+const SESSION_DURATION_MS = 12 * 60 * 60 * 1000;
+
+const DEMO_PERMISSIONS: Session['permissions'] = [
+  'PATIENT_READ',
+  'PATIENT_WRITE',
+  'ENCOUNTER_READ',
+  'ENCOUNTER_WRITE',
+  'OBSERVATION_READ',
+  'OBSERVATION_WRITE',
+  'MEDICATION_ADMINISTER',
+  'PROCEDURE_PERFORM',
+  'DOCUMENT_SIGN',
+  'HANDOFF_CREATE',
+  'REPORT_GENERATE',
+];
+
+const buildSession = (): Session => ({
+  id: ulid(),
+  userId: ulid(),
+  deviceId: ulid(),
+  roles: ['EMS_PROVIDER', 'EMS_SUPERVISOR'],
+  permissions: DEMO_PERMISSIONS,
+  issuedAt: new Date().toISOString(),
+  expiresAt: new Date(Date.now() + SESSION_DURATION_MS).toISOString(),
+  lastActivity: new Date().toISOString(),
+});
+
+/**
+ * A persisted session is only reusable while it is unexpired. Anything else
+ * must send the crew back through the login screen.
+ */
+export function isSessionValid(session: Session | null): session is Session {
+  if (!session) return false;
+  const expiresAt = Date.parse(session.expiresAt);
+  return Number.isFinite(expiresAt) && expiresAt > Date.now();
+}
+
+/**
+ * Placeholder credential check. Replace with a call to the Laravel
+ * `/api/fhir/auth/login` endpoint once the API client is wired up.
+ */
 export const login = createAsyncThunk(
   'auth/login',
   async (credentials: { username: string; password: string; pin?: string }, { rejectWithValue }) => {
-    // Simulate API call
     await new Promise(resolve => setTimeout(resolve, 1000));
-    
-    // Mock validation
+
     if (credentials.username === 'demo' && credentials.password === 'demo') {
-      const session: Session = {
-        id: ulid(),
-        userId: ulid(),
-        deviceId: ulid(),
-        roles: ['EMS_PROVIDER', 'EMS_SUPERVISOR'],
-        permissions: [
-          'PATIENT_READ', 'PATIENT_WRITE',
-          'ENCOUNTER_READ', 'ENCOUNTER_WRITE',
-          'OBSERVATION_READ', 'OBSERVATION_WRITE',
-          'MEDICATION_ADMINISTER',
-          'PROCEDURE_PERFORM',
-          'DOCUMENT_SIGN',
-          'HANDOFF_CREATE',
-          'REPORT_GENERATE'
-        ],
-        issuedAt: new Date().toISOString(),
-        expiresAt: new Date(Date.now() + 12 * 60 * 60 * 1000).toISOString(), // 12 hours
-        lastActivity: new Date().toISOString(),
-      };
-      return session;
+      return buildSession();
     }
-    
+
     return rejectWithValue('Invalid credentials');
   }
 );
 
+/**
+ * Restore a persisted session on cold start, returning null when there is no
+ * session or it has expired so the navigator falls through to the login stack.
+ */
 export const checkAuthStatus = createAsyncThunk(
   'auth/checkStatus',
-  async (_, { rejectWithValue }) => {
-    // Check for existing session in secure storage
-    // For demo, create a mock session
-    return {
-      id: ulid(),
-      userId: ulid(),
-      deviceId: ulid(),
-      roles: ['EMS_PROVIDER', 'EMS_SUPERVISOR'],
-      permissions: [
-        'PATIENT_READ', 'PATIENT_WRITE',
-        'ENCOUNTER_READ', 'ENCOUNTER_WRITE',
-        'OBSERVATION_READ', 'OBSERVATION_WRITE',
-        'MEDICATION_ADMINISTER',
-        'PROCEDURE_PERFORM',
-        'DOCUMENT_SIGN',
-        'HANDOFF_CREATE',
-        'REPORT_GENERATE'
-      ],
-      issuedAt: new Date().toISOString(),
-      expiresAt: new Date(Date.now() + 12 * 60 * 60 * 1000).toISOString(),
-      lastActivity: new Date().toISOString(),
-    } as Session;
+  async (_, { getState, rejectWithValue }) => {
+    const state = getState() as { auth: AuthState };
+    const session = state.auth.session;
+
+    if (isSessionValid(session)) {
+      return session;
+    }
+    return rejectWithValue('No valid session');
   }
 );
 
 export const logout = createAsyncThunk(
   'auth/logout',
   async () => {
-    // Clear secure storage
     return true;
   }
 );
 
 export const refreshSession = createAsyncThunk(
   'auth/refresh',
-  async (_, { getState }) => {
+  async (_, { getState, rejectWithValue }) => {
     const state = getState() as { auth: AuthState };
-    if (state.auth.session) {
-      // Refresh token logic
+    if (isSessionValid(state.auth.session)) {
       return { ...state.auth.session, lastActivity: new Date().toISOString() };
     }
-    throw new Error('No session to refresh');
+    return rejectWithValue('No session to refresh');
   }
 );
 
@@ -139,12 +147,19 @@ const authSlice = createSlice({
         state.session = null;
         state.error = action.payload as string || 'Login failed';
       })
+      .addCase(checkAuthStatus.pending, (state) => {
+        state.isLoading = true;
+      })
       .addCase(checkAuthStatus.fulfilled, (state, action) => {
         state.isLoading = false;
-        if (action.payload) {
-          state.isAuthenticated = true;
-          state.session = action.payload;
-        }
+        state.isAuthenticated = true;
+        state.session = action.payload;
+      })
+      .addCase(checkAuthStatus.rejected, (state) => {
+        // No usable session: send the crew to the login screen.
+        state.isLoading = false;
+        state.isAuthenticated = false;
+        state.session = null;
       })
       .addCase(logout.fulfilled, (state) => {
         state.isAuthenticated = false;
@@ -153,6 +168,10 @@ const authSlice = createSlice({
       })
       .addCase(refreshSession.fulfilled, (state, action) => {
         state.session = action.payload;
+      })
+      .addCase(refreshSession.rejected, (state) => {
+        state.isAuthenticated = false;
+        state.session = null;
       });
   },
 });

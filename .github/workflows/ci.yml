@@ -13,6 +13,15 @@ jobs:
   typescript:
     name: TypeScript packages
     runs-on: ubuntu-latest
+    env:
+      PACKAGES: >-
+        --workspace=packages/core
+        --workspace=packages/fhir
+        --workspace=packages/sync
+        --workspace=packages/security
+        --workspace=packages/clinical
+        --workspace=packages/nemsis
+        --workspace=packages/ui
     steps:
       - uses: actions/checkout@v4
 
@@ -25,13 +34,33 @@ jobs:
         run: npm ci --include=dev
 
       - name: Typecheck
-        run: npm run typecheck --workspace=packages/core --workspace=packages/fhir --workspace=packages/sync --workspace=packages/security --workspace=packages/clinical
+        run: npm run typecheck $PACKAGES
 
       - name: Build packages
-        run: npm run build --workspace=packages/core --workspace=packages/fhir --workspace=packages/sync --workspace=packages/security --workspace=packages/clinical
+        run: npm run build $PACKAGES
 
       - name: Run unit tests
-        run: npm test --workspace=packages/core --workspace=packages/fhir --workspace=packages/sync --workspace=packages/security --workspace=packages/clinical
+        run: npm test $PACKAGES
+
+  mobile:
+    name: Mobile app typecheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --include=dev
+
+      - name: Build workspace packages
+        run: npm run build --workspace=packages/core --workspace=packages/fhir --workspace=packages/sync --workspace=packages/security --workspace=packages/clinical --workspace=packages/nemsis --workspace=packages/ui
+
+      - name: Typecheck mobile app
+        run: npm run typecheck --workspace=apps/mobile
 
   php:
     name: Laravel API

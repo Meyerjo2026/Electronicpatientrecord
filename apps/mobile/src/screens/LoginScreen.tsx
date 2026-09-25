@@ -1,324 +1,179 @@
-import React, { useEffect, useState } from 'react';
-import {
-  ActivityIndicator,
-  KeyboardAvoidingView,
-  Platform,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
-} from 'react-native';
+import React, { useCallback, useEffect, useState } from 'react';
+import { KeyboardAvoidingView, Platform, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useDispatch, useSelector } from 'react-redux';
-import { RootState, AppDispatch } from '../store';
-import { login, checkAuthStatus } from '../store/authSlice';
-import { colors, spacing, typography, borderRadius, shadows, layout } from '../theme';
+import {
+  Button,
+  Card,
+  Screen,
+  Text,
+  TextField,
+  useTheme,
+} from '@prehospital-epr/ui';
+import { AppDispatch, RootState } from '../store';
+import { checkAuthStatus, clearError, login } from '../store/authSlice';
 
 export const LoginScreen: React.FC = () => {
+  const theme = useTheme();
   const dispatch = useDispatch<AppDispatch>();
-  const { isLoading, error } = useSelector((state: RootState) => state.auth);
-  const [credentials, setCredentials] = useState({
-    username: '',
-    password: '',
-    pin: '',
-    biometric: false,
-  });
+  const isLoading = useSelector((state: RootState) => state.auth.isLoading);
+  const error = useSelector((state: RootState) => state.auth.error);
+  const biometricEnabled = useSelector((state: RootState) => state.auth.biometricEnabled);
+
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
+  const [pin, setPin] = useState('');
 
   useEffect(() => {
     dispatch(checkAuthStatus());
   }, [dispatch]);
 
-  const handleLogin = async () => {
-    try {
-      await dispatch(login(credentials)).unwrap();
-    } catch {}
-  };
+  const handleSignIn = useCallback(() => {
+    dispatch(login({ username: username.trim(), password, pin: pin || undefined }));
+  }, [dispatch, username, password, pin]);
 
-  if (isLoading && !credentials.username) {
-    return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color={colors.primary} />
-        <Text style={styles.loadingText}>Checking your session…</Text>
-      </View>
-    );
-  }
+  const canSubmit = username.trim().length > 0 && password.length > 0 && !isLoading;
 
   return (
-    <KeyboardAvoidingView
-      style={styles.container}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-    >
-      <ScrollView
-        contentContainerStyle={styles.content}
-        keyboardShouldPersistTaps="handled"
-        showsVerticalScrollIndicator={false}
+    <Screen contentStyle={{ justifyContent: 'center', flexGrow: 1 }}>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        style={{ flex: 1 }}
       >
-        <View style={styles.brand}>
-          <View style={styles.mark}>
-            <Ionicons name="medical" size={34} color={colors.primary} />
-          </View>
-          <Text style={styles.title}>Prehospital EPR</Text>
-          <Text style={styles.subtitle}>Your clinical record, ready when you are.</Text>
-        </View>
-
-        <View style={styles.formCard}>
-          <View style={styles.formHeader}>
-            <Text style={styles.sectionTitle}>Provider Sign In</Text>
-            <Text style={styles.sectionSubtitle}>Use your clinical account to continue</Text>
-          </View>
-
-          <View style={styles.inputGroup}>
-            <Text style={styles.label}>Username or Email</Text>
-            <View style={styles.inputWrapper}>
-              <Ionicons name="person-outline" size={20} color={colors.textTertiary} />
-              <TextInput
-                style={styles.input}
-                value={credentials.username}
-                onChangeText={text => setCredentials({ ...credentials, username: text })}
-                placeholder="Enter username"
-                placeholderTextColor={colors.textTertiary}
-                autoCapitalize="none"
-                autoComplete="username"
-              />
-            </View>
-          </View>
-
-          <View style={styles.inputGroup}>
-            <Text style={styles.label}>Password</Text>
-            <View style={styles.inputWrapper}>
-              <Ionicons name="lock-closed-outline" size={20} color={colors.textTertiary} />
-              <TextInput
-                style={styles.input}
-                value={credentials.password}
-                onChangeText={text => setCredentials({ ...credentials, password: text })}
-                placeholder="Enter password"
-                placeholderTextColor={colors.textTertiary}
-                secureTextEntry
-                autoComplete="password"
-              />
-            </View>
-          </View>
-
-          <View style={styles.inputGroup}>
-            <Text style={styles.label}>PIN <Text style={styles.optional}>Optional</Text></Text>
-            <View style={styles.inputWrapper}>
-              <Ionicons name="keypad-outline" size={20} color={colors.textTertiary} />
-              <TextInput
-                style={styles.input}
-                value={credentials.pin}
-                onChangeText={text => setCredentials({ ...credentials, pin: text })}
-                placeholder="4-digit PIN"
-                placeholderTextColor={colors.textTertiary}
-                keyboardType="number-pad"
-                maxLength={4}
-                secureTextEntry
-              />
-            </View>
-          </View>
-
-          {error && (
-            <View style={styles.errorBox}>
-              <Ionicons name="alert-circle" size={18} color={colors.error} />
-              <Text style={styles.error}>{error}</Text>
-            </View>
-          )}
-
-          <TouchableOpacity
-            style={styles.loginButton}
-            onPress={handleLogin}
-            disabled={isLoading}
+        <View style={{ alignItems: 'center', gap: theme.spacing.md, marginBottom: theme.spacing.xl }}>
+          <View
+            style={{
+              width: 72,
+              height: 72,
+              alignItems: 'center',
+              justifyContent: 'center',
+              borderRadius: theme.borderRadius.xl,
+              backgroundColor: theme.colors.primarySurface,
+            }}
           >
-            {isLoading ? (
-              <ActivityIndicator size="small" color={colors.textInverse} />
-            ) : (
-              <>
-                <Text style={styles.loginButtonText}>Sign In</Text>
-                <Ionicons name="arrow-forward" size={18} color={colors.textInverse} />
-              </>
-            )}
-          </TouchableOpacity>
-
-          <View style={styles.divider}>
-            <View style={styles.dividerLine} />
-            <Text style={styles.dividerText}>OR</Text>
-            <View style={styles.dividerLine} />
+            <Ionicons name="medical" size={34} color={theme.colors.primary} />
           </View>
-
-          <TouchableOpacity style={styles.biometricButton} onPress={() => {}}>
-            <Ionicons name="finger-print" size={24} color={colors.primary} />
-            <Text style={styles.biometricButtonText}>Use Face ID or Touch ID</Text>
-          </TouchableOpacity>
+          <View style={{ alignItems: 'center', gap: theme.spacing.xs }}>
+            <Text variant="title">Prehospital EPR</Text>
+            <Text variant="subheading" tone="tertiary" style={{ textAlign: 'center' }}>
+              Offline-first patient record for EMS crews
+            </Text>
+          </View>
         </View>
 
-        <Text style={styles.footerText}>Version 1.0.0 · HIPAA compliant · FHIR R4</Text>
-      </ScrollView>
-    </KeyboardAvoidingView>
+        <Card>
+          <TextField
+            label="Username"
+            required
+            value={username}
+            onChangeText={value => {
+              setUsername(value);
+              if (error) dispatch(clearError());
+            }}
+            placeholder="EMS crew identifier"
+            autoCapitalize="none"
+            autoCorrect={false}
+            textContentType="username"
+            returnKeyType="next"
+            editable={!isLoading}
+          />
+
+          <TextField
+            label="Password"
+            required
+            value={password}
+            onChangeText={value => {
+              setPassword(value);
+              if (error) dispatch(clearError());
+            }}
+            placeholder="••••••••"
+            secureTextEntry
+            autoCapitalize="none"
+            autoCorrect={false}
+            textContentType="password"
+            returnKeyType="go"
+            onSubmitEditing={canSubmit ? handleSignIn : undefined}
+            editable={!isLoading}
+          />
+
+          <TextField
+            label="PIN"
+            help="Required on shared and vehicle-mounted devices."
+            value={pin}
+            onChangeText={setPin}
+            placeholder="4 digits"
+            keyboardType="number-pad"
+            secureTextEntry
+            maxLength={4}
+            editable={!isLoading}
+          />
+
+          {error ? (
+            <View
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: theme.spacing.sm,
+                padding: theme.spacing.md,
+                marginBottom: theme.spacing.lg,
+                borderRadius: theme.borderRadius.md,
+                backgroundColor: theme.colors.errorSurface,
+              }}
+              accessibilityLiveRegion="assertive"
+            >
+              <Ionicons name="alert-circle" size={17} color={theme.colors.error} />
+              <Text variant="subheading" tone="critical" style={{ flex: 1 }}>
+                {error}
+              </Text>
+            </View>
+          ) : null}
+
+          <Button
+            label="Sign In"
+            onPress={handleSignIn}
+            loading={isLoading}
+            disabled={!canSubmit}
+            fullWidth
+            size="lg"
+            icon="log-in-outline"
+          />
+
+          {biometricEnabled ? (
+            <>
+              <View
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  gap: theme.spacing.md,
+                  marginVertical: theme.spacing.lg,
+                }}
+              >
+                <View style={{ flex: 1, height: 1, backgroundColor: theme.colors.separator }} />
+                <Text variant="caption" tone="tertiary">
+                  or
+                </Text>
+                <View style={{ flex: 1, height: 1, backgroundColor: theme.colors.separator }} />
+              </View>
+              <Button
+                label="Use biometrics"
+                onPress={() => dispatch(checkAuthStatus())}
+                variant="secondary"
+                fullWidth
+                icon="finger-print-outline"
+              />
+            </>
+          ) : null}
+        </Card>
+
+        <Text
+          variant="caption"
+          tone="tertiary"
+          style={{ textAlign: 'center', marginTop: theme.spacing.xl }}
+        >
+          Access is logged and audited. Handle patient data in accordance with
+          your service&apos;s information governance policy.
+        </Text>
+      </KeyboardAvoidingView>
+    </Screen>
   );
 };
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: colors.background,
-  },
-  content: {
-    flexGrow: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.xxl,
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: colors.background,
-  },
-  loadingText: {
-    ...typography.styles.subheadline,
-    color: colors.textSecondary,
-    marginTop: spacing.md,
-  },
-  brand: {
-    alignItems: 'center',
-    marginBottom: spacing.xl,
-  },
-  mark: {
-    width: 68,
-    height: 68,
-    borderRadius: 20,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: colors.primaryLight,
-    ...shadows.sm,
-  },
-  title: {
-    ...typography.styles.title1,
-    color: colors.textPrimary,
-    marginTop: spacing.md,
-  },
-  subtitle: {
-    ...typography.styles.subheadline,
-    color: colors.textSecondary,
-    marginTop: spacing.xs,
-  },
-  formCard: {
-    width: '100%',
-    maxWidth: layout.formMaxWidth,
-    padding: spacing.lg,
-    borderRadius: borderRadius.xl,
-    backgroundColor: colors.surface,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.border,
-    ...shadows.lg,
-  },
-  formHeader: {
-    marginBottom: spacing.lg,
-  },
-  sectionTitle: {
-    ...typography.styles.title2,
-    color: colors.textPrimary,
-  },
-  sectionSubtitle: {
-    ...typography.styles.footnote,
-    color: colors.textSecondary,
-    marginTop: spacing.xs,
-  },
-  inputGroup: {
-    marginBottom: spacing.md,
-  },
-  label: {
-    ...typography.styles.footnote,
-    color: colors.textSecondary,
-    fontWeight: '600',
-    marginBottom: spacing.xs,
-    marginLeft: spacing.xxs,
-  },
-  optional: {
-    color: colors.textTertiary,
-    fontWeight: '400',
-  },
-  inputWrapper: {
-    minHeight: layout.controlHeight,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-    paddingHorizontal: spacing.md,
-    borderRadius: borderRadius.md,
-    backgroundColor: colors.fill,
-  },
-  input: {
-    flex: 1,
-    height: layout.controlHeight,
-    color: colors.textPrimary,
-    fontFamily: typography.systemFont,
-    fontSize: typography.sizes.md,
-  },
-  errorBox: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: spacing.sm,
-    padding: spacing.md,
-    borderRadius: borderRadius.md,
-    backgroundColor: colors.error + '14',
-    marginBottom: spacing.sm,
-  },
-  error: {
-    ...typography.styles.footnote,
-    color: colors.error,
-    flex: 1,
-  },
-  loginButton: {
-    minHeight: 50,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: spacing.sm,
-    marginTop: spacing.sm,
-    borderRadius: borderRadius.md,
-    backgroundColor: colors.primary,
-  },
-  loginButtonText: {
-    ...typography.styles.headline,
-    color: colors.textInverse,
-  },
-  pressed: {
-    opacity: 0.72,
-  },
-  divider: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
-    marginVertical: spacing.lg,
-  },
-  dividerLine: {
-    flex: 1,
-    height: StyleSheet.hairlineWidth,
-    backgroundColor: colors.separator,
-  },
-  dividerText: {
-    ...typography.styles.caption2,
-    color: colors.textTertiary,
-    fontWeight: '600',
-  },
-  biometricButton: {
-    minHeight: 50,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: spacing.sm,
-    borderRadius: borderRadius.md,
-    backgroundColor: colors.primaryLight,
-  },
-  biometricButtonText: {
-    ...typography.styles.headline,
-    color: colors.primary,
-  },
-  footerText: {
-    ...typography.styles.caption,
-    color: colors.textTertiary,
-    marginTop: spacing.lg,
-  },
-});
