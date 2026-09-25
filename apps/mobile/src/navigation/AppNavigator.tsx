@@ -17,6 +17,7 @@ import { HandoffScreen } from '../screens/HandoffScreen';
 import { SettingsScreen } from '../screens/SettingsScreen';
 import { LoginScreen } from '../screens/LoginScreen';
 import { PatientReportScreen } from '../screens/PatientReportScreen';
+import { QualityIndicatorsScreen } from '../screens/QualityIndicatorsScreen';
 
 export type MainStackParamList = {
   MainTabs: undefined;
@@ -26,6 +27,7 @@ export type MainStackParamList = {
   Handoff: { encounterId: string };
   Settings: undefined;
   PatientReport: { encounterId: string };
+  QualityIndicators: undefined;
 };
 
 export type TabParamList = {
@@ -141,6 +143,11 @@ const MainStack: React.FC = () => {
         name="PatientReport"
         component={PatientReportScreen}
         options={{ title: 'Patient Report' }}
+      />
+      <Stack.Screen
+        name="QualityIndicators"
+        component={QualityIndicatorsScreen}
+        options={{ title: 'Quality Indicators' }}
       />
     </Stack.Navigator>
   );

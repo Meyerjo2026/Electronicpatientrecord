@@ -19,6 +19,9 @@ import { AppDispatch, RootState } from '../store';
 import { logout, setBiometricEnabled, setPinEnabled } from '../store/authSlice';
 import { setTheme } from '../store/uiSlice';
 import { useSync } from '../providers/SyncProvider';
+import { useNavigation } from '@react-navigation/native';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import type { MainStackParamList } from '../navigation/AppNavigator';
 import { formatRelative } from '../utils/format';
 
 const APP_VERSION =
@@ -26,9 +29,12 @@ const APP_VERSION =
   (Constants.manifest2?.extra?.version as string | undefined) ??
   '1.0.0';
 
+type Nav = NativeStackNavigationProp<MainStackParamList>;
+
 export const SettingsScreen: React.FC = () => {
   const theme = useTheme();
   const dispatch = useDispatch<AppDispatch>();
+  const navigation = useNavigation<Nav>();
 
   const session = useSelector((state: RootState) => state.auth.session);
   const biometricEnabled = useSelector((state: RootState) => state.auth.biometricEnabled);
@@ -165,6 +171,19 @@ export const SettingsScreen: React.FC = () => {
               />
             </>
           ) : null}
+        </Card>
+      </Section>
+
+      <Section title="Clinical reference">
+        <Card padded={false}>
+          <ListRow
+            title="Quality indicators"
+            subtitle="DEMS ePCR modules, fields and validation rules"
+            icon="checkmark-done-outline"
+            iconTone="primary"
+            chevron
+            onPress={() => navigation.navigate('QualityIndicators')}
+          />
         </Card>
       </Section>
 
