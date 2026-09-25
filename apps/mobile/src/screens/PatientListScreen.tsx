@@ -1,16 +1,28 @@
 import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, TextInput, FlatList, Modal } from 'react-native';
+import {
+  FlatList,
+  KeyboardAvoidingView,
+  Modal,
+  Platform,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { useDispatch, useSelector } from 'react-redux';
 import { RootState, AppDispatch } from '../store';
 import { searchPatients, createPatient, setCurrentPatient } from '../store/patientSlice';
-import { createEncounter, setCurrentEncounter } from '../store/encounterSlice';
-import { colors, spacing, typography, borderRadius, shadows } from '../theme';
+import { setCurrentEncounter } from '../store/encounterSlice';
+import { colors, spacing, typography, borderRadius, shadows, layout } from '../theme';
 
 export const PatientListScreen: React.FC = () => {
   const dispatch = useDispatch<AppDispatch>();
   const { patients, searchResults, isLoading, lastSearchParams } = useSelector((state: RootState) => state.patient);
   const { currentEncounter } = useSelector((state: RootState) => state.encounter);
-  
+
   const [query, setQuery] = React.useState('');
   const [showCreateModal, setShowCreateModal] = React.useState(false);
   const [newPatient, setNewPatient] = React.useState({
@@ -30,6 +42,8 @@ export const PatientListScreen: React.FC = () => {
   const handleCreatePatient = async () => {
     try {
       const patientData = {
+        id: '',
+        resourceType: 'Patient' as const,
         name: [{
           given: [newPatient.firstName],
           family: newPatient.lastName,
@@ -42,138 +56,192 @@ export const PatientListScreen: React.FC = () => {
           use: 'mobile' as const,
         }] : undefined,
       };
-      
+
       const result = await dispatch(createPatient(patientData)).unwrap();
       dispatch(setCurrentPatient(result));
-      
-      // If there's an active encounter, link patient
+
       if (currentEncounter) {
         dispatch(setCurrentEncounter({
           ...currentEncounter,
-          subject: { reference: `Patient/${result.id}`, display: `${result.name?.[0]?.given?.[0]} ${result.name?.[0]?.family}` }
+          subject: { reference: `Patient/${result.id}`, display: `${result.name?.[0]?.given?.[0]} ${result.name?.[0]?.family}` },
         }));
       }
-      
+
       setShowCreateModal(false);
       setNewPatient({ firstName: '', lastName: '', dob: '', gender: 'unknown', phone: '' });
-    } catch (e) {
-      // Error handled by slice
-    }
+    } catch {}
   };
 
   const displayPatients = lastSearchParams ? searchResults : patients;
 
   return (
     <View style={styles.container}>
-      <View style={styles.searchBar}>
-        <TextInput
-          style={styles.searchInput}
-          placeholder="Search patients by name, ID, phone..."
-          value={query}
-          onChangeText={setQuery}
-          onSubmitEditing={handleSearch}
-          placeholderTextColor={colors.textTertiary}
-        />
-        <TouchableOpacity style={styles.searchButton} onPress={handleSearch}>
-          <Text style={styles.searchButtonText}>Search</Text>
-        </TouchableOpacity>
-      </View>
-
-      <View style={styles.actionBar}>
-        <TouchableOpacity style={styles.createButton} onPress={() => setShowCreateModal(true)}>
-          <Text style={styles.createButtonText}>+ New Patient</Text>
-        </TouchableOpacity>
-      </View>
-
-      <FlatList
-        data={displayPatients}
-        keyExtractor={item => item.id}
-        renderItem={({ item }) => (
-          <TouchableOpacity style={styles.patientRow} onPress={() => {
-            dispatch(setCurrentPatient(item));
-            if (currentEncounter) {
-              dispatch(setCurrentEncounter({
-                ...currentEncounter,
-                subject: { reference: `Patient/${item.id}`, display: `${item.name?.[0]?.given?.[0]} ${item.name?.[0]?.family}` }
-              }));
-            }
-          }}>
-            <View style={styles.patientAvatar}>
-              <Text style={styles.patientInitials}>
-                {item.name?.[0]?.given?.[0]?.[0] || ''}{item.name?.[0]?.family?.[0] || ''}
-              </Text>
-            </View>
-            <View style={styles.patientInfo}>
-              <View style={styles.patientNameRow}>
-                <Text style={styles.patientName}>
-                  {item.name?.[0]?.given?.[0] || ''} {item.name?.[0]?.family || ''}
-                </Text>
-                {item.gender && (
-                  <View style={[
-                    styles.genderBadge,
-                    { backgroundColor: item.gender === 'male' ? colors.primaryLight : item.gender === 'female' ? '#FCE4EC' : colors.border }
-                  ]}>
-                    <Text style={[
-                      styles.genderBadgeText,
-                      { color: item.gender === 'male' ? colors.primary : item.gender === 'female' ? '#C2185B' : colors.textTertiary }
-                    ]}>
-                      {item.gender.charAt(0).toUpperCase()}
-                    </Text>
-                  </View>
-                )}
-              </View>
-              <View style={styles.patientDetails}>
-                {item.birthDate && (
-                  <Text style={styles.patientDetail}>
-                    DOB: {new Date(item.birthDate).toLocaleDateString()} ({calculateAge(item.birthDate)})
-                  </Text>
-                )}
-                {item.telecom?.[0]?.value && (
-                  <Text style={styles.patientDetail}>
-                    {item.telecom[0].value}
-                  </Text>
-                )}
-                {item.identifier?.[0]?.value && (
-                  <Text style={styles.patientDetail}>
-                    MRN: {item.identifier[0].value}
-                  </Text>
-                )}
-              </View>
-            </View>
-          </TouchableOpacity>
-        )}
-        ItemSeparatorComponent={() => <View style={styles.separator} />}
-        ListEmptyComponent={
-          <View style={styles.emptyState}>
-            <Text style={styles.emptyText}>
-              {query ? 'No patients found' : 'No patients recorded yet'}
+      <View style={styles.page}>
+        <View style={styles.pageHeader}>
+          <View>
+            <Text style={styles.pageTitle}>Patients</Text>
+            <Text style={styles.pageSubtitle}>
+              {isLoading ? 'Searching…' : `${displayPatients.length} ${displayPatients.length === 1 ? 'patient' : 'patients'}`}
             </Text>
-            {!query && (
-              <TouchableOpacity style={styles.emptyButton} onPress={() => setShowCreateModal(true)}>
-                <Text style={styles.emptyButtonText}>Create First Patient</Text>
-              </TouchableOpacity>
-            )}
           </View>
-        }
-      />
+          <TouchableOpacity
+            style={styles.createButton}
+            onPress={() => setShowCreateModal(true)}
+          >
+            <Ionicons name="add" size={20} color={colors.primary} />
+            <Text style={styles.createButtonText}>New Patient</Text>
+          </TouchableOpacity>
+        </View>
 
-      <Modal visible={showCreateModal} animationType="slide" transparent={true}>
-        <View style={styles.modalOverlay}>
+        <View style={styles.searchBar}>
+          <Ionicons name="search" size={20} color={colors.textTertiary} />
+          <TextInput
+            style={styles.searchInput}
+            placeholder="Search by name, ID, or phone"
+            value={query}
+            onChangeText={setQuery}
+            onSubmitEditing={handleSearch}
+            placeholderTextColor={colors.textTertiary}
+            returnKeyType="search"
+          />
+          {query.length > 0 && (
+            <TouchableOpacity style={styles.clearButton} onPress={() => setQuery('')}>
+              <Ionicons name="close-circle" size={20} color={colors.textTertiary} />
+            </TouchableOpacity>
+          )}
+          <TouchableOpacity style={styles.searchButton} onPress={handleSearch}>
+            <Ionicons name="arrow-forward" size={20} color={colors.textInverse} />
+          </TouchableOpacity>
+        </View>
+
+        <FlatList
+          style={styles.patientList}
+          contentContainerStyle={styles.patientListContent}
+          data={displayPatients}
+          keyExtractor={item => item.id}
+          keyboardShouldPersistTaps="handled"
+          renderItem={({ item }) => (
+            <TouchableOpacity
+              style={styles.patientRow}
+              onPress={() => {
+                dispatch(setCurrentPatient(item));
+                if (currentEncounter) {
+                  dispatch(setCurrentEncounter({
+                    ...currentEncounter,
+                    subject: { reference: `Patient/${item.id}`, display: `${item.name?.[0]?.given?.[0]} ${item.name?.[0]?.family}` },
+                  }));
+                }
+              }}
+            >
+              <View style={styles.patientAvatar}>
+                <Text style={styles.patientInitials}>
+                  {item.name?.[0]?.given?.[0]?.[0] || ''}{item.name?.[0]?.family?.[0] || ''}
+                </Text>
+              </View>
+              <View style={styles.patientInfo}>
+                <View style={styles.patientNameRow}>
+                  <Text style={styles.patientName}>
+                    {item.name?.[0]?.given?.[0] || ''} {item.name?.[0]?.family || ''}
+                  </Text>
+                  {item.gender && (
+                    <View
+                      style={[
+                        styles.genderBadge,
+                        {
+                          backgroundColor: item.gender === 'male'
+                            ? colors.maleLight
+                            : item.gender === 'female'
+                              ? colors.femaleLight
+                              : colors.fill,
+                        },
+                      ]}
+                    >
+                      <Text
+                        style={[
+                          styles.genderBadgeText,
+                          {
+                            color: item.gender === 'male'
+                              ? colors.male
+                              : item.gender === 'female'
+                                ? colors.female
+                                : colors.textTertiary,
+                          },
+                        ]}
+                      >
+                        {item.gender.charAt(0).toUpperCase()}
+                      </Text>
+                    </View>
+                  )}
+                </View>
+                <View style={styles.patientDetails}>
+                  {item.birthDate && (
+                    <Text style={styles.patientDetail}>
+                      DOB {new Date(item.birthDate).toLocaleDateString()} · {calculateAge(item.birthDate)} yrs
+                    </Text>
+                  )}
+                  {item.telecom?.[0]?.value && (
+                    <Text style={styles.patientDetail}>{item.telecom[0].value}</Text>
+                  )}
+                  {item.identifier?.[0]?.value && (
+                    <Text style={styles.patientDetail}>MRN {item.identifier[0].value}</Text>
+                  )}
+                </View>
+              </View>
+              <Ionicons name="chevron-forward" size={18} color={colors.textTertiary} />
+            </TouchableOpacity>
+          )}
+          ItemSeparatorComponent={() => <View style={styles.separator} />}
+          ListEmptyComponent={
+            <View style={styles.emptyState}>
+              <View style={styles.emptyIcon}>
+                <Ionicons name="people-outline" size={28} color={colors.primary} />
+              </View>
+              <Text style={styles.emptyTitle}>
+                {query ? 'No patients found' : 'No patients yet'}
+              </Text>
+              <Text style={styles.emptyText}>
+                {query ? 'Try a different name, ID, or phone number.' : 'Create a patient record to get started.'}
+              </Text>
+              {!query && (
+                <TouchableOpacity style={styles.emptyButton} onPress={() => setShowCreateModal(true)}>
+                  <Text style={styles.emptyButtonText}>Create First Patient</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+          }
+        />
+      </View>
+
+      <Modal visible={showCreateModal} animationType="slide" transparent>
+        <KeyboardAvoidingView
+          style={styles.modalOverlay}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        >
           <View style={styles.modalContainer}>
+            <View style={styles.modalHandle} />
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>New Patient</Text>
-              <TouchableOpacity onPress={() => setShowCreateModal(false)}>
-                <Text style={styles.modalClose}>✕</Text>
+              <View>
+                <Text style={styles.modalTitle}>New Patient</Text>
+                <Text style={styles.modalSubtitle}>Add the patient’s identifying details</Text>
+              </View>
+              <TouchableOpacity style={styles.closeButton} onPress={() => setShowCreateModal(false)}>
+                <Ionicons name="close" size={22} color={colors.textSecondary} />
               </TouchableOpacity>
             </View>
-            <View style={styles.modalContent}>
+
+            <ScrollView
+              style={styles.modalContent}
+              contentContainerStyle={styles.modalContentInner}
+              keyboardShouldPersistTaps="handled"
+            >
               <View style={styles.formGroup}>
                 <Text style={styles.formLabel}>First Name *</Text>
                 <TextInput
                   style={styles.formInput}
                   value={newPatient.firstName}
                   onChangeText={text => setNewPatient({ ...newPatient, firstName: text })}
-                  placeholder="John"
+                  placeholder="First name"
+                  placeholderTextColor={colors.textTertiary}
                 />
               </View>
               <View style={styles.formGroup}>
@@ -182,7 +250,8 @@ export const PatientListScreen: React.FC = () => {
                   style={styles.formInput}
                   value={newPatient.lastName}
                   onChangeText={text => setNewPatient({ ...newPatient, lastName: text })}
-                  placeholder="Doe"
+                  placeholder="Last name"
+                  placeholderTextColor={colors.textTertiary}
                 />
               </View>
               <View style={styles.formRow}>
@@ -193,7 +262,8 @@ export const PatientListScreen: React.FC = () => {
                     value={newPatient.dob}
                     onChangeText={text => setNewPatient({ ...newPatient, dob: text })}
                     placeholder="YYYY-MM-DD"
-                    keyboardType="date-time"
+                    placeholderTextColor={colors.textTertiary}
+                    keyboardType="numbers-and-punctuation"
                   />
                 </View>
                 <View style={styles.formGroupHalf}>
@@ -202,7 +272,9 @@ export const PatientListScreen: React.FC = () => {
                     style={styles.formInput}
                     value={newPatient.gender}
                     onChangeText={text => setNewPatient({ ...newPatient, gender: text })}
-                    placeholder="male/female/other"
+                    placeholder="Unknown"
+                    placeholderTextColor={colors.textTertiary}
+                    autoCapitalize="none"
                   />
                 </View>
               </View>
@@ -213,20 +285,29 @@ export const PatientListScreen: React.FC = () => {
                   value={newPatient.phone}
                   onChangeText={text => setNewPatient({ ...newPatient, phone: text })}
                   placeholder="+1 (555) 123-4567"
+                  placeholderTextColor={colors.textTertiary}
                   keyboardType="phone-pad"
                 />
               </View>
-            </View>
+            </ScrollView>
+
             <View style={styles.modalActions}>
               <TouchableOpacity style={styles.modalCancel} onPress={() => setShowCreateModal(false)}>
                 <Text style={styles.modalCancelText}>Cancel</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={styles.modalConfirm} onPress={handleCreatePatient} disabled={!newPatient.firstName || !newPatient.lastName}>
+              <TouchableOpacity
+                style={[
+                  styles.modalConfirm,
+                  (!newPatient.firstName || !newPatient.lastName) && styles.modalConfirmDisabled,
+                ]}
+                onPress={handleCreatePatient}
+                disabled={!newPatient.firstName || !newPatient.lastName}
+              >
                 <Text style={styles.modalConfirmText}>Create Patient</Text>
               </TouchableOpacity>
             </View>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
     </View>
   );
@@ -248,60 +329,103 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.background,
   },
-  searchBar: {
+  page: {
+    flex: 1,
+    width: '100%',
+    maxWidth: layout.contentMaxWidth,
+    alignSelf: 'center',
+  },
+  pageHeader: {
     flexDirection: 'row',
-    padding: spacing.md,
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.xl,
+    paddingBottom: spacing.md,
+  },
+  pageTitle: {
+    ...typography.styles.largeTitle,
+    color: colors.textPrimary,
+  },
+  pageSubtitle: {
+    ...typography.styles.subheadline,
+    color: colors.textSecondary,
+    marginTop: spacing.xxs,
+  },
+  createButton: {
+    minHeight: 44,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    paddingHorizontal: spacing.md,
+    borderRadius: borderRadius.full,
+    backgroundColor: colors.primaryLight,
+  },
+  createButtonText: {
+    ...typography.styles.subheadline,
+    color: colors.primary,
+    fontWeight: '600',
+  },
+  pressed: {
+    opacity: 0.68,
+  },
+  searchBar: {
+    minHeight: 50,
+    flexDirection: 'row',
+    alignItems: 'center',
     gap: spacing.sm,
+    marginHorizontal: spacing.lg,
+    marginBottom: spacing.md,
+    paddingLeft: spacing.md,
+    paddingRight: spacing.xs,
+    borderRadius: borderRadius.md,
+    backgroundColor: colors.fill,
   },
   searchInput: {
     flex: 1,
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: borderRadius.md,
-    padding: spacing.md,
-    fontSize: typography.sizes.md,
+    height: layout.controlHeight,
     color: colors.textPrimary,
+    fontFamily: typography.systemFont,
+    fontSize: typography.sizes.md,
   },
-  searchButton: {
-    backgroundColor: colors.primary,
-    borderRadius: borderRadius.md,
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.md,
+  clearButton: {
+    width: 36,
+    height: 44,
+    alignItems: 'center',
     justifyContent: 'center',
   },
-  searchButtonText: {
-    color: colors.white,
-    fontSize: typography.sizes.md,
-    fontWeight: '600',
-  },
-  actionBar: {
-    paddingHorizontal: spacing.md,
-    paddingBottom: spacing.md,
-  },
-  createButton: {
-    backgroundColor: colors.secondary,
-    borderRadius: borderRadius.md,
-    padding: spacing.md,
+  searchButton: {
+    width: 42,
+    height: 42,
     alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: borderRadius.sm,
+    backgroundColor: colors.primary,
   },
-  createButtonText: {
-    color: colors.white,
-    fontSize: typography.sizes.md,
-    fontWeight: '600',
+  patientList: {
+    flex: 1,
+    marginHorizontal: spacing.lg,
+    overflow: 'hidden',
+    borderRadius: borderRadius.lg,
+    backgroundColor: colors.surface,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.border,
+  },
+  patientListContent: {
+    flexGrow: 1,
+    paddingBottom: layout.tabBarHeight + spacing.xl,
   },
   patientRow: {
+    minHeight: 76,
     flexDirection: 'row',
     alignItems: 'center',
-    padding: spacing.md,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.md,
     backgroundColor: colors.surface,
-    marginHorizontal: spacing.md,
-    borderRadius: borderRadius.md,
-    ...shadows.sm,
   },
   patientAvatar: {
-    width: 48,
-    height: 48,
+    width: 44,
+    height: 44,
     borderRadius: borderRadius.full,
     backgroundColor: colors.primaryLight,
     alignItems: 'center',
@@ -309,95 +433,142 @@ const styles = StyleSheet.create({
     marginRight: spacing.md,
   },
   patientInitials: {
-    fontSize: typography.sizes.lg,
-    fontWeight: '600',
+    ...typography.styles.headline,
     color: colors.primary,
   },
   patientInfo: {
     flex: 1,
+    minWidth: 0,
   },
   patientNameRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: spacing.xs,
   },
   patientName: {
-    fontSize: typography.sizes.md,
-    fontWeight: '600',
+    ...typography.styles.headline,
     color: colors.textPrimary,
+    flexShrink: 1,
   },
   genderBadge: {
+    minWidth: 24,
+    alignItems: 'center',
     paddingHorizontal: spacing.sm,
     paddingVertical: 2,
     borderRadius: borderRadius.full,
     marginLeft: spacing.sm,
   },
   genderBadgeText: {
-    fontSize: typography.sizes.xs,
-    fontWeight: '600',
+    ...typography.styles.caption2,
+    fontWeight: '700',
   },
   patientDetails: {
-    gap: 2,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
+    marginTop: spacing.xs,
   },
   patientDetail: {
-    fontSize: typography.sizes.xs,
+    ...typography.styles.caption,
     color: colors.textSecondary,
   },
   separator: {
-    height: 1,
-    backgroundColor: colors.border,
-    marginHorizontal: spacing.md,
+    height: StyleSheet.hairlineWidth,
+    marginLeft: 76,
+    backgroundColor: colors.separator,
   },
   emptyState: {
-    padding: spacing.xxl,
+    flex: 1,
     alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: spacing.xl,
+    paddingVertical: spacing.xxl,
+  },
+  emptyIcon: {
+    width: 56,
+    height: 56,
+    borderRadius: borderRadius.lg,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.primaryLight,
+  },
+  emptyTitle: {
+    ...typography.styles.headline,
+    color: colors.textPrimary,
+    marginTop: spacing.md,
   },
   emptyText: {
-    fontSize: typography.sizes.md,
-    color: colors.textTertiary,
-    marginBottom: spacing.md,
+    ...typography.styles.subheadline,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    marginTop: spacing.xs,
   },
   emptyButton: {
-    backgroundColor: colors.primary,
-    borderRadius: borderRadius.md,
+    minHeight: 44,
+    justifyContent: 'center',
     paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.md,
+    marginTop: spacing.md,
+    borderRadius: borderRadius.md,
+    backgroundColor: colors.primary,
   },
   emptyButtonText: {
-    color: colors.white,
-    fontSize: typography.sizes.md,
+    ...typography.styles.subheadline,
+    color: colors.textInverse,
     fontWeight: '600',
   },
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    justifyContent: 'center',
-    padding: spacing.lg,
+    justifyContent: 'flex-end',
+    backgroundColor: colors.scrim,
   },
   modalContainer: {
+    width: '100%',
+    maxWidth: 620,
+    maxHeight: '94%',
+    alignSelf: 'center',
     backgroundColor: colors.surface,
-    borderRadius: borderRadius.lg,
-    maxHeight: '90%',
+    borderTopLeftRadius: borderRadius.xl,
+    borderTopRightRadius: borderRadius.xl,
+    ...shadows.xl,
+  },
+  modalHandle: {
+    width: 36,
+    height: 5,
+    alignSelf: 'center',
+    borderRadius: borderRadius.full,
+    backgroundColor: colors.disabled,
+    marginTop: spacing.sm,
   },
   modalHeader: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    padding: spacing.lg,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
+    justifyContent: 'space-between',
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.md,
+    paddingBottom: spacing.md,
   },
   modalTitle: {
-    fontSize: typography.sizes.xl,
-    fontWeight: '600',
+    ...typography.styles.title2,
     color: colors.textPrimary,
   },
-  modalClose: {
-    fontSize: typography.sizes.xl,
-    color: colors.textTertiary,
+  modalSubtitle: {
+    ...typography.styles.footnote,
+    color: colors.textSecondary,
+    marginTop: 2,
+  },
+  closeButton: {
+    width: 44,
+    height: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: borderRadius.full,
+    backgroundColor: colors.fill,
   },
   modalContent: {
-    padding: spacing.lg,
+    flexGrow: 0,
+  },
+  modalContentInner: {
+    paddingHorizontal: spacing.lg,
+    paddingBottom: spacing.lg,
   },
   formGroup: {
     marginBottom: spacing.md,
@@ -410,47 +581,54 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   formLabel: {
-    fontSize: typography.sizes.sm,
-    fontWeight: '500',
+    ...typography.styles.footnote,
     color: colors.textSecondary,
+    fontWeight: '600',
     marginBottom: spacing.xs,
+    marginLeft: spacing.xxs,
   },
   formInput: {
-    backgroundColor: colors.background,
-    borderWidth: 1,
-    borderColor: colors.border,
+    minHeight: layout.controlHeight,
+    paddingHorizontal: spacing.md,
     borderRadius: borderRadius.md,
-    padding: spacing.md,
-    fontSize: typography.sizes.md,
+    backgroundColor: colors.fill,
     color: colors.textPrimary,
+    fontFamily: typography.systemFont,
+    fontSize: typography.sizes.md,
   },
   modalActions: {
     flexDirection: 'row',
-    justifyContent: 'flex-end',
+    gap: spacing.sm,
     padding: spacing.lg,
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
-    gap: spacing.md,
+    paddingTop: spacing.md,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.separator,
   },
   modalCancel: {
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.md,
+    flex: 1,
+    minHeight: 48,
+    alignItems: 'center',
+    justifyContent: 'center',
     borderRadius: borderRadius.md,
+    backgroundColor: colors.fill,
   },
   modalCancelText: {
-    fontSize: typography.sizes.md,
+    ...typography.styles.headline,
     color: colors.textSecondary,
-    fontWeight: '500',
   },
   modalConfirm: {
-    backgroundColor: colors.primary,
+    flex: 1.4,
+    minHeight: 48,
+    alignItems: 'center',
+    justifyContent: 'center',
     borderRadius: borderRadius.md,
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.md,
+    backgroundColor: colors.primary,
+  },
+  modalConfirmDisabled: {
+    backgroundColor: colors.disabled,
   },
   modalConfirmText: {
-    fontSize: typography.sizes.md,
-    color: colors.white,
-    fontWeight: '600',
+    ...typography.styles.headline,
+    color: colors.textInverse,
   },
 });

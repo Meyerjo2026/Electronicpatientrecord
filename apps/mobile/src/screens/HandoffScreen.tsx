@@ -1,90 +1,214 @@
 import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, TextInput } from 'react-native';
-import { useDispatch, useSelector } from 'react-redux';
-import { RootState, AppDispatch } from '../store';
-import { colors, spacing, typography, borderRadius, shadows } from '../theme';
+import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import { colors, spacing, typography, borderRadius, shadows, layout } from '../theme';
 
-const handoffTypes = [
-  { id: 'imist', name: 'IMIST-AMBO', description: 'Standard handoff format', color: colors.primary },
-  { id: 'sbar', name: 'SBAR', description: 'Situation-Background-Assessment-Recommendation', color: colors.secondary },
-  { id: 'cda', name: 'CDA Document', description: 'Clinical Document Architecture', color: colors.info },
-  { id: 'fhir', name: 'FHIR Bundle', description: 'FHIR R4 transfer bundle', color: colors.warning },
+const handoffTypes: Array<{
+  id: string;
+  name: string;
+  description: string;
+  icon: React.ComponentProps<typeof Ionicons>['name'];
+}> = [
+  { id: 'imist', name: 'IMIST-AMBO', description: 'Standard handoff format', icon: 'reader-outline' },
+  { id: 'sbar', name: 'SBAR', description: 'Situation, background, assessment, recommendation', icon: 'chatbubbles-outline' },
+  { id: 'cda', name: 'CDA Document', description: 'Clinical Document Architecture', icon: 'document-text-outline' },
+  { id: 'fhir', name: 'FHIR Bundle', description: 'FHIR R4 transfer bundle', icon: 'git-network-outline' },
 ];
 
-export const HandoffScreen: React.FC = () => {
-  return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <View style={styles.headerCard}>
-        <Text style={styles.sectionTitle}>Patient Handoff</Text>
-        <Text style={styles.subtitle}>Generate and send patient handoff reports</Text>
-      </View>
+export const HandoffScreen: React.FC = () => (
+  <ScrollView
+    style={styles.container}
+    contentContainerStyle={styles.content}
+    showsVerticalScrollIndicator={false}
+  >
+    <View style={styles.pageHeader}>
+      <Text style={styles.pageTitle}>Handoff</Text>
+      <Text style={styles.pageSubtitle}>Create a clear, structured transfer of care.</Text>
+    </View>
 
-      <View style={styles.grid}>
-        {handoffTypes.map(type => (
-          <TouchableOpacity key={type.id} style={[styles.categoryCard, { borderLeftColor: type.color }]}>
-            <View style={styles.categoryHeader}>
-              <Text style={styles.categoryName}>{type.name}</Text>
-            </View>
-            <Text style={styles.categoryDesc}>{type.description}</Text>
-          </TouchableOpacity>
-        ))}
-      </View>
+    <Text style={styles.sectionLabel}>Handoff format</Text>
+    <View style={styles.typeList}>
+      {handoffTypes.map((type, index) => (
+        <TouchableOpacity
+          key={type.id}
+          style={[styles.typeRow, index < handoffTypes.length - 1 && styles.rowBorder]}
+          onPress={() => {}}
+        >
+          <View style={styles.typeIcon}>
+            <Ionicons name={type.icon} size={22} color={colors.primary} />
+          </View>
+          <View style={styles.typeCopy}>
+            <Text style={styles.typeName}>{type.name}</Text>
+            <Text style={styles.typeDescription}>{type.description}</Text>
+          </View>
+          <Ionicons name="chevron-forward" size={18} color={colors.textTertiary} />
+        </TouchableOpacity>
+      ))}
+    </View>
 
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Preview</Text>
-        <View style={styles.previewBox}>
-          <Text style={styles.previewTitle}>IMIST-AMBO Handoff</Text>
-          <Text style={styles.previewLine}><Text style={styles.previewLabel}>Identification:</Text> Patient Name, DOB, ID</Text>
-          <Text style={styles.previewLine}><Text style={styles.previewLabel}>Mechanism:</Text> MVC / Fall / Medical</Text>
-          <Text style={styles.previewLine}><Text style={styles.previewLabel}>Injuries:</Text> Head, Chest, Abdomen...</Text>
-          <Text style={styles.previewLine}><Text style={styles.previewLabel}>Signs:</Text> BP 120/80, HR 88, RR 16, SpO2 98%</Text>
-          <Text style={styles.previewLine}><Text style={styles.previewLabel}>Treatment:</Text> IV, O2, C-collar, Splints</Text>
-          <Text style={styles.previewLine}><Text style={styles.previewLabel}>Background:</Text> PMH, Meds, Allergies</Text>
-          <Text style={styles.previewLine}><Text style={styles.previewLabel}>Other:</Text> Pregnancy, Tetanus, etc.</Text>
+    <View style={styles.previewSection}>
+      <View style={styles.previewHeader}>
+        <View>
+          <Text style={styles.sectionTitle}>Preview</Text>
+          <Text style={styles.previewSubtitle}>IMIST-AMBO handoff</Text>
+        </View>
+        <View style={styles.previewBadge}>
+          <Ionicons name="eye-outline" size={15} color={colors.primary} />
+          <Text style={styles.previewBadgeText}>Live preview</Text>
         </View>
       </View>
-    </ScrollView>
-  );
-};
+      <View style={styles.previewBox}>
+        {[
+          ['Identification', 'Patient name, date of birth, ID'],
+          ['Mechanism', 'MVC, fall, or medical'],
+          ['Injuries', 'Head, chest, abdomen…'],
+          ['Signs', 'BP 120/80, HR 88, RR 16, SpO₂ 98%'],
+          ['Treatment', 'IV, oxygen, C-collar, splints'],
+          ['Background', 'History, medications, allergies'],
+          ['Other', 'Pregnancy, tetanus, and relevant details'],
+        ].map(([label, value], index) => (
+          <View key={label} style={[styles.previewRow, index < 6 && styles.previewRowBorder]}>
+            <Text style={styles.previewLabel}>{label}</Text>
+            <Text style={styles.previewValue}>{value}</Text>
+          </View>
+        ))}
+      </View>
+    </View>
+  </ScrollView>
+);
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.background },
-  content: { paddingBottom: spacing.xxl },
-  headerCard: {
-    backgroundColor: colors.surface,
-    margin: spacing.md,
-    padding: spacing.lg,
-    borderRadius: borderRadius.lg,
-    ...shadows.md,
-    borderLeftWidth: 4,
-    borderLeftColor: colors.primary,
-  },
-  sectionTitle: { fontSize: typography.sizes.xl, fontWeight: '600', color: colors.textPrimary },
-  subtitle: { fontSize: typography.sizes.md, color: colors.textSecondary, marginTop: spacing.xs },
-  grid: { paddingHorizontal: spacing.md, gap: spacing.md },
-  categoryCard: {
+  container: {
     flex: 1,
-    aspectRatio: 1,
-    backgroundColor: colors.surface,
-    borderRadius: borderRadius.lg,
-    padding: spacing.lg,
-    ...shadows.sm,
-    borderLeftWidth: 4,
+    backgroundColor: colors.background,
   },
-  categoryHeader: { marginBottom: spacing.sm },
-  categoryName: { fontSize: typography.sizes.md, fontWeight: '600', color: colors.textPrimary },
-  categoryDesc: { fontSize: typography.sizes.sm, color: colors.textSecondary, textAlign: 'center' },
-  section: { paddingHorizontal: spacing.md, marginTop: spacing.lg },
-  previewBox: {
-    backgroundColor: colors.surface,
-    margin: spacing.md,
-    padding: spacing.lg,
+  content: {
+    width: '100%',
+    maxWidth: layout.contentMaxWidth,
+    alignSelf: 'center',
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.xl,
+    paddingBottom: layout.tabBarHeight + spacing.xxl,
+  },
+  pageHeader: {
+    marginBottom: spacing.xl,
+  },
+  pageTitle: {
+    ...typography.styles.largeTitle,
+    color: colors.textPrimary,
+  },
+  pageSubtitle: {
+    ...typography.styles.subheadline,
+    color: colors.textSecondary,
+    marginTop: spacing.xs,
+  },
+  sectionLabel: {
+    ...typography.styles.footnote,
+    color: colors.textSecondary,
+    fontWeight: '600',
+    marginBottom: spacing.sm,
+    marginLeft: spacing.xxs,
+  },
+  typeList: {
+    overflow: 'hidden',
     borderRadius: borderRadius.lg,
-    ...shadows.md,
-    borderWidth: 1,
+    backgroundColor: colors.surface,
+    borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.border,
+    ...shadows.sm,
   },
-  previewTitle: { fontSize: typography.sizes.md, fontWeight: '600', color: colors.textPrimary, marginBottom: spacing.md },
-  previewLine: { fontSize: typography.sizes.sm, color: colors.textSecondary, marginBottom: spacing.xs, fontFamily: 'monospace' },
-  previewLabel: { fontWeight: '600', color: colors.textPrimary },
+  typeRow: {
+    minHeight: 72,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.md,
+  },
+  rowBorder: {
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.separator,
+  },
+  typeIcon: {
+    width: 44,
+    height: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: borderRadius.md,
+    backgroundColor: colors.primaryLight,
+    marginRight: spacing.md,
+  },
+  typeCopy: {
+    flex: 1,
+  },
+  typeName: {
+    ...typography.styles.headline,
+    color: colors.textPrimary,
+  },
+  typeDescription: {
+    ...typography.styles.footnote,
+    color: colors.textSecondary,
+    marginTop: 2,
+  },
+  previewSection: {
+    marginTop: spacing.xl,
+  },
+  previewHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: spacing.md,
+  },
+  sectionTitle: {
+    ...typography.styles.title3,
+    color: colors.textPrimary,
+  },
+  previewSubtitle: {
+    ...typography.styles.footnote,
+    color: colors.textSecondary,
+    marginTop: 2,
+  },
+  previewBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+    borderRadius: borderRadius.full,
+    backgroundColor: colors.primaryLight,
+  },
+  previewBadgeText: {
+    ...typography.styles.caption2,
+    color: colors.primary,
+    fontWeight: '600',
+  },
+  previewBox: {
+    overflow: 'hidden',
+    borderRadius: borderRadius.lg,
+    backgroundColor: colors.surface,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.border,
+    ...shadows.sm,
+  },
+  previewRow: {
+    minHeight: 54,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+  },
+  previewRowBorder: {
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.separator,
+  },
+  previewLabel: {
+    width: 112,
+    ...typography.styles.footnote,
+    color: colors.textPrimary,
+    fontWeight: '600',
+  },
+  previewValue: {
+    flex: 1,
+    ...typography.styles.footnote,
+    color: colors.textSecondary,
+  },
 });

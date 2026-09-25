@@ -1,84 +1,90 @@
+import { Platform } from 'react-native';
+
+const systemFont = Platform.select({
+  ios: 'System',
+  android: 'Roboto',
+  default: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+}) ?? 'System';
+
 export const colors = {
-  // Primary brand colors
-  primary: '#0066CC',
-  primaryDark: '#0052A3',
-  primaryLight: '#E6F0FA',
-  
-  // Secondary colors
-  secondary: '#009944',
-  secondaryDark: '#007A33',
-  secondaryLight: '#E6F7ED',
-  
-  // Semantic colors
-  success: '#009944',
-  warning: '#FF9900',
-  error: '#CC0000',
-  info: '#0066CC',
-  
-  // Background colors
-  background: '#F8F9FA',
+  primary: '#007AFF',
+  primaryDark: '#0062CC',
+  primaryLight: '#EAF3FF',
+  secondary: '#34C759',
+  secondaryDark: '#248A3D',
+  secondaryLight: '#EAF9EE',
+  success: '#34C759',
+  warning: '#FF9F0A',
+  error: '#FF3B30',
+  info: '#007AFF',
+  background: '#F2F2F7',
   surface: '#FFFFFF',
   surfaceElevated: '#FFFFFF',
-  
-  // Text colors
-  textPrimary: '#1A1A1A',
-  textSecondary: '#4A4A4A',
-  textTertiary: '#8A8A8A',
+  surfaceTranslucent: 'rgba(255,255,255,0.92)',
+  textPrimary: '#000000',
+  textSecondary: '#3C3C43',
+  textTertiary: '#8E8E93',
   textInverse: '#FFFFFF',
   textOnPrimary: '#FFFFFF',
-  
-  // Border colors
-  border: '#E0E0E0',
-  borderFocus: '#0066CC',
-  borderError: '#CC0000',
-  
-  // Status colors (EMS specific)
+  white: '#FFFFFF',
+  border: 'rgba(60,60,67,0.16)',
+  borderFocus: '#007AFF',
+  borderError: '#FF3B30',
+  separator: 'rgba(60,60,67,0.16)',
+  scrim: 'rgba(0,0,0,0.32)',
+  fill: 'rgba(118,118,128,0.12)',
+  fillStrong: 'rgba(118,118,128,0.20)',
+  disabled: '#C7C7CC',
+  disabledText: '#8E8E93',
+  female: '#FF2D55',
+  femaleLight: '#FFF0F3',
+  male: '#007AFF',
+  maleLight: '#EAF3FF',
   triage: {
-    immediate: '#CC0000',    // Red - Immediate
-    delayed: '#FF9900',      // Yellow - Delayed
-    minimal: '#009944',      // Green - Minimal
-    expectant: '#666666',    // Gray - Expectant
-    deceased: '#000000',     // Black - Deceased
+    immediate: '#FF3B30',
+    delayed: '#FF9F0A',
+    minimal: '#34C759',
+    expectant: '#8E8E93',
+    deceased: '#000000',
   },
-  
-  // Vital signs thresholds
   vitals: {
-    critical: '#CC0000',
-    abnormal: '#FF9900',
-    normal: '#009944',
-    unknown: '#8A8A8A',
+    critical: '#FF3B30',
+    abnormal: '#FF9F0A',
+    normal: '#34C759',
+    unknown: '#8E8E93',
   },
-  
-  // Level of service colors
   levelOfService: {
-    BLS: '#009944',
-    ALS: '#0066CC',
-    CC: '#CC0000',
-    AIR: '#9933CC',
-    TACTICAL: '#FF6600',
-    COMMUNITY: '#009999',
+    BLS: '#34C759',
+    ALS: '#007AFF',
+    CC: '#FF3B30',
+    AIR: '#AF52DE',
+    TACTICAL: '#FF9500',
+    COMMUNITY: '#00A7A7',
   },
 };
 
 export const spacing = {
+  xxs: 2,
   xs: 4,
   sm: 8,
   md: 16,
   lg: 24,
   xl: 32,
   xxl: 48,
+  xxxl: 64,
 };
 
 export const typography = {
+  systemFont,
   sizes: {
-    xs: 10,
-    sm: 12,
-    md: 14,
-    lg: 16,
-    xl: 18,
-    xxl: 20,
-    xxxl: 24,
-    display: 32,
+    xs: 11,
+    sm: 13,
+    md: 17,
+    lg: 20,
+    xl: 24,
+    xxl: 28,
+    xxxl: 34,
+    display: 40,
   },
   weights: {
     light: '300' as const,
@@ -89,17 +95,88 @@ export const typography = {
   },
   lineHeights: {
     tight: 1.2,
-    normal: 1.5,
-    relaxed: 1.75,
+    normal: 1.4,
+    relaxed: 1.6,
+  },
+  styles: {
+    largeTitle: {
+      fontFamily: systemFont,
+      fontSize: 34,
+      lineHeight: 41,
+      fontWeight: '700' as const,
+      letterSpacing: 0.2,
+    },
+    title1: {
+      fontFamily: systemFont,
+      fontSize: 28,
+      lineHeight: 34,
+      fontWeight: '700' as const,
+      letterSpacing: 0.2,
+    },
+    title2: {
+      fontFamily: systemFont,
+      fontSize: 22,
+      lineHeight: 28,
+      fontWeight: '700' as const,
+      letterSpacing: 0.2,
+    },
+    title3: {
+      fontFamily: systemFont,
+      fontSize: 20,
+      lineHeight: 25,
+      fontWeight: '600' as const,
+    },
+    headline: {
+      fontFamily: systemFont,
+      fontSize: 17,
+      lineHeight: 22,
+      fontWeight: '600' as const,
+    },
+    body: {
+      fontFamily: systemFont,
+      fontSize: 17,
+      lineHeight: 22,
+      fontWeight: '400' as const,
+    },
+    callout: {
+      fontFamily: systemFont,
+      fontSize: 16,
+      lineHeight: 21,
+      fontWeight: '400' as const,
+    },
+    subheadline: {
+      fontFamily: systemFont,
+      fontSize: 15,
+      lineHeight: 20,
+      fontWeight: '400' as const,
+    },
+    footnote: {
+      fontFamily: systemFont,
+      fontSize: 13,
+      lineHeight: 18,
+      fontWeight: '400' as const,
+    },
+    caption: {
+      fontFamily: systemFont,
+      fontSize: 12,
+      lineHeight: 16,
+      fontWeight: '400' as const,
+    },
+    caption2: {
+      fontFamily: systemFont,
+      fontSize: 11,
+      lineHeight: 13,
+      fontWeight: '400' as const,
+    },
   },
 };
 
 export const borderRadius = {
-  xs: 4,
-  sm: 6,
-  md: 8,
-  lg: 12,
-  xl: 16,
+  xs: 6,
+  sm: 10,
+  md: 14,
+  lg: 20,
+  xl: 28,
   full: 9999,
 };
 
@@ -112,32 +189,32 @@ export const shadows = {
     elevation: 0,
   },
   sm: {
-    shadowColor: '#000',
+    shadowColor: '#000000',
     shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 2,
+    shadowOpacity: 0.04,
+    shadowRadius: 4,
     elevation: 1,
   },
   md: {
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.06,
+    shadowRadius: 12,
+    elevation: 2,
   },
   lg: {
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 8,
-    elevation: 5,
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.08,
+    shadowRadius: 24,
+    elevation: 4,
   },
   xl: {
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.2,
-    shadowRadius: 16,
-    elevation: 8,
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.1,
+    shadowRadius: 32,
+    elevation: 6,
   },
 };
 
@@ -172,8 +249,12 @@ export const animation = {
 
 export const layout = {
   maxWidth: 1200,
-  headerHeight: 56,
+  contentMaxWidth: 900,
+  formMaxWidth: 720,
+  headerHeight: 52,
   tabBarHeight: 64,
+  controlHeight: 50,
+  minTouchTarget: 44,
   sideBarWidth: 280,
 };
 

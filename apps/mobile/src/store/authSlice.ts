@@ -1,5 +1,5 @@
 import { createSlice, createAsyncThunk, PayloadAction } from '@reduxjs/toolkit';
-import { Session, SecurityRole, SecurityPermission } from '@prehospital-epr/core';
+import { Session } from '@prehospital-epr/core';
 import { ulid } from 'ulid';
 
 interface AuthState {
@@ -78,7 +78,7 @@ export const checkAuthStatus = createAsyncThunk(
       issuedAt: new Date().toISOString(),
       expiresAt: new Date(Date.now() + 12 * 60 * 60 * 1000).toISOString(),
       lastActivity: new Date().toISOString(),
-    };
+    } as Session;
   }
 );
 

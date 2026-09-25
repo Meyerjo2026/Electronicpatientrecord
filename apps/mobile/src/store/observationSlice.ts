@@ -2,10 +2,12 @@ import { createSlice, createAsyncThunk, PayloadAction } from '@reduxjs/toolkit';
 import { Observation, ObservationCreate, VitalSignsSet, ObservationSearchParams } from '@prehospital-epr/core';
 import { ulid } from 'ulid';
 
+type VitalSignsRecord = VitalSignsSet & { id?: string };
+
 interface ObservationState {
-  vitalSigns: VitalSignsSet[];
+  vitalSigns: VitalSignsRecord[];
   observations: Observation[];
-  currentVitalSigns: VitalSignsSet | null;
+  currentVitalSigns: VitalSignsRecord | null;
   isLoading: boolean;
   error: string | null;
   autoCaptureEnabled: boolean;
@@ -24,9 +26,9 @@ const initialState: ObservationState = {
 
 export const recordVitalSigns = createAsyncThunk(
   'observation/recordVitalSigns',
-  async (data: VitalSignsSet, { rejectWithValue }) => {
+  async (data: VitalSignsRecord, { rejectWithValue }) => {
     await new Promise(resolve => setTimeout(resolve, 50));
-    const vs: VitalSignsSet = {
+    const vs: VitalSignsRecord = {
       ...data,
       id: data.id || ulid()
     };
@@ -56,7 +58,7 @@ export const loadVitalSignsForEncounter = createAsyncThunk(
   'observation/loadForEncounter',
   async (encounterId: string, { rejectWithValue }) => {
     await new Promise(resolve => setTimeout(resolve, 100));
-    return { vitalSigns: [] as VitalSignsSet[], observations: [] as Observation[] };
+    return { vitalSigns: [] as VitalSignsRecord[], observations: [] as Observation[] };
   }
 );
 
@@ -79,7 +81,7 @@ const observationSlice = createSlice({
   name: 'observation',
   initialState,
   reducers: {
-    addVitalSigns: (state, action: PayloadAction<VitalSignsSet>) => {
+    addVitalSigns: (state, action: PayloadAction<VitalSignsRecord>) => {
       state.vitalSigns.unshift(action.payload);
       state.currentVitalSigns = action.payload;
       // Keep only last 100 vital signs sets in memory
@@ -90,7 +92,7 @@ const observationSlice = createSlice({
     addObservation: (state, action: PayloadAction<Observation>) => {
       state.observations.unshift(action.payload);
     },
-    setCurrentVitalSigns: (state, action: PayloadAction<VitalSignsSet | null>) => {
+    setCurrentVitalSigns: (state, action: PayloadAction<VitalSignsRecord | null>) => {
       state.currentVitalSigns = action.payload;
     },
     setAutoCaptureEnabled: (state, action: PayloadAction<boolean>) => {

@@ -1,0 +1,31 @@
+{
+  "expo": {
+    "name": "prehospital-epr",
+    "slug": "prehospital-epr",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "../../UCAP logo.png",
+    "userInterfaceStyle": "light",
+    "splash": {
+      "image": "../../UCAP logo.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#ffffff"
+    },
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "ios": {
+      "supportsTablet": true
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "../../UCAP logo.png",
+        "backgroundColor": "#ffffff"
+      }
+    },
+    "web": {
+      "favicon": "../../UCAP logo.png"
+    },
+    "scheme": "prehospital-epr"
+  }
+}

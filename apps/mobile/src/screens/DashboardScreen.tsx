@@ -1,21 +1,22 @@
 import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, FlatList, RefreshControl } from 'react-native';
+import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { useDispatch, useSelector } from 'react-redux';
 import { RootState, AppDispatch } from '../store';
 import { createEncounter, setActiveEncounter } from '../store/encounterSlice';
-import { searchPatients } from '../store/patientSlice';
 import { syncNow } from '../store/syncSlice';
-import { colors, spacing, typography, borderRadius, shadows } from '../theme';
+import { colors, spacing, typography, borderRadius, shadows, layout } from '../theme';
 
 export const DashboardScreen: React.FC = () => {
   const dispatch = useDispatch<AppDispatch>();
-  const { currentEncounter, encounters, activeEncounterId } = useSelector((state: RootState) => state.encounter);
-  const { isAuthenticated, session } = useSelector((state: RootState) => state.auth);
-  const { isOnline, isSyncing, lastSyncTime, pendingOperations } = useSelector((state: RootState) => state.sync);
-  const { patients } = useSelector((state: RootState) => state.patient);
+  const { currentEncounter, encounters } = useSelector((state: RootState) => state.encounter);
+  const { session } = useSelector((state: RootState) => state.auth);
+  const { isOnline, isSyncing, pendingOperations } = useSelector((state: RootState) => state.sync);
 
   const handleNewEncounter = () => {
     dispatch(createEncounter({
+      id: '',
+      resourceType: 'Encounter',
       subject: { reference: 'Patient/new', display: 'New Patient' },
       class: 'emergency',
       period: { start: new Date().toISOString() },
@@ -31,185 +32,264 @@ export const DashboardScreen: React.FC = () => {
   const recentEncounters = encounters.slice(0, 5);
 
   return (
-    <View style={styles.container}>
+    <ScrollView
+      style={styles.container}
+      contentContainerStyle={styles.content}
+      showsVerticalScrollIndicator={false}
+    >
       <View style={styles.header}>
         <View style={styles.headerLeft}>
-          <Text style={styles.greeting}>Good morning, {session?.roles?.[0]?.replace('EMS_', '') || 'Provider'}</Text>
-          <Text style={styles.date}>{new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })}</Text>
+          <Text style={styles.greeting}>
+            Good {getDayPart()}, {session?.roles?.[0]?.replace('EMS_', '') || 'Provider'}
+          </Text>
+          <Text style={styles.date}>
+            {new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
+          </Text>
         </View>
-        <View style={styles.headerRight}>
-          <View style={[
-            styles.statusBadge,
-            { backgroundColor: isOnline ? colors.success + '20' : colors.error + '20' }
-          ]}>
-            <View style={[
-              styles.statusDot,
-              { backgroundColor: isOnline ? colors.success : colors.error }
-            ]} />
-            <Text style={[
-              styles.statusText,
-              { color: isOnline ? colors.success : colors.error }
-            ]}>
-              {isOnline ? 'Online' : 'Offline'}
-            </Text>
-          </View>
+        <View
+          style={[
+            styles.connectionBadge,
+            { backgroundColor: isOnline ? colors.secondaryLight : colors.error + '18' },
+          ]}
+        >
+          <View
+            style={[
+              styles.connectionDot,
+              { backgroundColor: isOnline ? colors.success : colors.error },
+            ]}
+          />
+          <Text
+            style={[
+              styles.connectionText,
+              { color: isOnline ? colors.secondaryDark : colors.error },
+            ]}
+          >
+            {isOnline ? 'Online' : 'Offline'}
+          </Text>
         </View>
       </View>
 
       {currentEncounter && (
         <View style={styles.activeEncounterCard}>
           <View style={styles.activeEncounterHeader}>
-            <Text style={styles.activeEncounterLabel}>ACTIVE ENCOUNTER</Text>
-            <View style={[
-              styles.statusBadge,
-              { backgroundColor: getStatusColor(currentEncounter.status) + '20' }
-            ]}>
-              <Text style={[
-                styles.statusText,
-                { color: getStatusColor(currentEncounter.status) }
-              ]}>
+            <View style={styles.activeLabelRow}>
+              <View style={styles.liveDot} />
+              <Text style={styles.activeEncounterLabel}>Active Encounter</Text>
+            </View>
+            <View
+              style={[
+                styles.statusBadge,
+                { backgroundColor: getStatusColor(currentEncounter.status) + '18' },
+              ]}
+            >
+              <Text
+                style={[
+                  styles.statusText,
+                  { color: getStatusColor(currentEncounter.status) },
+                ]}
+              >
                 {formatStatus(currentEncounter.status)}
               </Text>
             </View>
           </View>
+
+          <Text style={styles.activePatientName}>
+            {currentEncounter.subject?.display || 'New Patient'}
+          </Text>
+
           <View style={styles.activeEncounterInfo}>
-            <View style={styles.infoRow}>
+            <View style={styles.infoItem}>
               <Text style={styles.infoLabel}>Unit</Text>
               <Text style={styles.infoValue}>Medic 12</Text>
             </View>
-            <View style={styles.infoRow}>
+            <View style={styles.infoDivider} />
+            <View style={styles.infoItem}>
               <Text style={styles.infoLabel}>Priority</Text>
-              <Text style={[
-                styles.infoValue,
-                { color: getPriorityColor(currentEncounter.priority || 'urgent') }
-              ]}>
+              <Text
+                style={[
+                  styles.infoValue,
+                  { color: getPriorityColor(currentEncounter.priority || 'urgent') },
+                ]}
+              >
                 {currentEncounter.priority?.toUpperCase() || 'URGENT'}
               </Text>
             </View>
-            <View style={styles.infoRow}>
+            <View style={styles.infoDivider} />
+            <View style={styles.infoItem}>
               <Text style={styles.infoLabel}>Duration</Text>
-              <Text style={styles.infoValue}>{calculateDuration(currentEncounter.period.start)}</Text>
+              <Text style={styles.infoValue}>
+                {calculateDuration(currentEncounter.period.start || new Date().toISOString())}
+              </Text>
             </View>
           </View>
-          <TouchableOpacity style={styles.continueButton} onPress={() => dispatch(setActiveEncounter(currentEncounter.id))}>
+
+          <TouchableOpacity
+            style={styles.continueButton}
+            onPress={() => dispatch(setActiveEncounter(currentEncounter.id || null))}
+          >
             <Text style={styles.continueButtonText}>Continue Encounter</Text>
+            <Ionicons name="arrow-forward" size={18} color={colors.textInverse} />
           </TouchableOpacity>
         </View>
       )}
 
       <View style={styles.sectionHeader}>
         <Text style={styles.sectionTitle}>Quick Actions</Text>
+        <Text style={styles.sectionSubtitle}>Common tasks</Text>
       </View>
 
       <View style={styles.actionGrid}>
-        <TouchableOpacity style={styles.actionCard} onPress={handleNewEncounter}>
-          <View style={styles.actionIcon}><Text style={styles.actionIconText}>+</Text></View>
-          <Text style={styles.actionTitle}>New Encounter</Text>
-          <Text style={styles.actionSubtitle}>Start patient care record</Text>
+        <TouchableOpacity
+          style={styles.actionCard}
+          onPress={handleNewEncounter}
+        >
+          <View style={styles.actionIcon}>
+            <Ionicons name="add" size={24} color={colors.primary} />
+          </View>
+          <View style={styles.actionCopy}>
+            <Text style={styles.actionTitle}>New Encounter</Text>
+            <Text style={styles.actionSubtitle}>Start a patient care record</Text>
+          </View>
         </TouchableOpacity>
-        
-        <TouchableOpacity style={styles.actionCard} onPress={() => {}}>
-          <View style={styles.actionIcon}><Text style={styles.actionIconText}>👤</Text></View>
-          <Text style={styles.actionTitle}>Find Patient</Text>
-          <Text style={styles.actionSubtitle}>Search existing records</Text>
+
+        <TouchableOpacity
+          style={styles.actionCard}
+          onPress={() => {}}
+        >
+          <View style={styles.actionIcon}>
+            <Ionicons name="search" size={22} color={colors.primary} />
+          </View>
+          <View style={styles.actionCopy}>
+            <Text style={styles.actionTitle}>Find Patient</Text>
+            <Text style={styles.actionSubtitle}>Search existing records</Text>
+          </View>
         </TouchableOpacity>
-        
-        <TouchableOpacity style={styles.actionCard} onPress={handleSync} disabled={isSyncing}>
-          <View style={styles.actionIcon}><Text style={styles.actionIconText}>{isSyncing ? '⟳' : '☁'}</Text></View>
-          <Text style={styles.actionTitle}>Sync Data</Text>
-          <Text style={styles.actionSubtitle}>
-            {isSyncing ? 'Syncing...' : pendingOperations > 0 ? `${pendingOperations} pending` : 'Up to date'}
-          </Text>
+
+        <TouchableOpacity
+          style={styles.actionCard}
+          onPress={handleSync}
+          disabled={isSyncing}
+        >
+          <View style={styles.actionIcon}>
+            <Ionicons name="sync" size={22} color={colors.primary} />
+          </View>
+          <View style={styles.actionCopy}>
+            <Text style={styles.actionTitle}>Sync Data</Text>
+            <Text style={styles.actionSubtitle}>
+              {isSyncing ? 'Syncing…' : pendingOperations > 0 ? `${pendingOperations} pending` : 'Up to date'}
+            </Text>
+          </View>
         </TouchableOpacity>
-        
-        <TouchableOpacity style={styles.actionCard} onPress={() => {}}>
-          <View style={styles.actionIcon}><Text style={styles.actionIconText}>📋</Text></View>
-          <Text style={styles.actionTitle}>Protocols</Text>
-          <Text style={styles.actionSubtitle}>Clinical guidelines</Text>
+
+        <TouchableOpacity
+          style={styles.actionCard}
+          onPress={() => {}}
+        >
+          <View style={styles.actionIcon}>
+            <Ionicons name="document-text-outline" size={22} color={colors.primary} />
+          </View>
+          <View style={styles.actionCopy}>
+            <Text style={styles.actionTitle}>Protocols</Text>
+            <Text style={styles.actionSubtitle}>Clinical guidelines</Text>
+          </View>
         </TouchableOpacity>
       </View>
 
       <View style={styles.sectionHeader}>
-        <View style={styles.sectionHeaderLeft}>
-          <Text style={styles.sectionTitle}>Recent Encounters</Text>
-        </View>
-        <TouchableOpacity style={styles.viewAllButton}>
+        <Text style={styles.sectionTitle}>Recent Encounters</Text>
+        <TouchableOpacity style={styles.viewAllButton} onPress={() => {}}>
           <Text style={styles.viewAllText}>View All</Text>
         </TouchableOpacity>
       </View>
 
-      <FlatList
-        data={recentEncounters}
-        keyExtractor={item => item.id}
-        renderItem={({ item }) => (
-          <TouchableOpacity style={styles.encounterRow} onPress={() => dispatch(setActiveEncounter(item.id))}>
-            <View style={[
-              styles.encounterStatusIndicator,
-              { backgroundColor: getStatusColor(item.status) }
-            ]} />
-            <View style={styles.encounterInfo}>
-              <View style={styles.encounterRowTop}>
-                <Text style={styles.encounterType}>{item.class?.toUpperCase() || 'EMERGENCY'}</Text>
-                <Text style={[
-                  styles.encounterTime,
-                  { color: getPriorityColor(item.priority || 'urgent') }
-                ]}>
-                  {item.priority?.toUpperCase() || 'URGENT'}
+      {recentEncounters.length > 0 ? (
+        <View style={styles.encounterList}>
+          {recentEncounters.map((item, index) => (
+            <TouchableOpacity
+              key={item.id}
+              style={[
+                styles.encounterRow,
+                index < recentEncounters.length - 1 && styles.encounterRowBorder,
+              ]}
+              onPress={() => dispatch(setActiveEncounter(item.id || null))}
+            >
+              <View
+                style={[
+                  styles.encounterStatusIndicator,
+                  { backgroundColor: getStatusColor(item.status) },
+                ]}
+              />
+              <View style={styles.encounterInfo}>
+                <View style={styles.encounterRowTop}>
+                  <Text style={styles.encounterType}>
+                    {item.class?.toUpperCase() || 'EMERGENCY'}
+                  </Text>
+                  <Text
+                    style={[
+                      styles.encounterTime,
+                      { color: getPriorityColor(item.priority || 'urgent') },
+                    ]}
+                  >
+                    {item.priority?.toUpperCase() || 'URGENT'}
+                  </Text>
+                </View>
+                <Text style={styles.encounterPatient}>
+                  {item.subject?.display || 'Unknown Patient'}
+                </Text>
+                <Text style={styles.encounterDetail}>
+                  {item.period.start ? formatDateTime(item.period.start) : 'No time'}
                 </Text>
               </View>
-              <Text style={styles.encounterDetail}>{item.period.start ? formatDateTime(item.period.start) : 'No time'}</Text>
-              <Text style={styles.encounterDetail}>{item.subject?.display || 'Unknown Patient'}</Text>
-            </View>
-            <View style={[
-              styles.encounterStatusBadge,
-              { backgroundColor: getStatusColor(item.status) + '20' }
-            ]}>
-              <Text style={[
-                styles.encounterStatusText,
-                { color: getStatusColor(item.status) }
-              ]}>
-                {formatStatus(item.status)}
-              </Text>
-            </View>
-          </TouchableOpacity>
-        )}
-        ItemSeparatorComponent={() => <View style={styles.separator} />}
-        ListEmptyComponent={
-          <View style={styles.emptyState}>
-            <Text style={styles.emptyText}>No recent encounters</Text>
-            <TouchableOpacity style={styles.emptyButton} onPress={handleNewEncounter}>
-              <Text style={styles.emptyButtonText}>Create First Encounter</Text>
+              <Ionicons name="chevron-forward" size={18} color={colors.textTertiary} />
             </TouchableOpacity>
+          ))}
+        </View>
+      ) : (
+        <View style={styles.emptyState}>
+          <View style={styles.emptyIcon}>
+            <Ionicons name="clipboard-outline" size={28} color={colors.primary} />
           </View>
-        }
-      />
-    </View>
+          <Text style={styles.emptyTitle}>No recent encounters</Text>
+          <Text style={styles.emptyText}>Start a new encounter when you’re ready.</Text>
+          <TouchableOpacity style={styles.emptyButton} onPress={handleNewEncounter}>
+            <Text style={styles.emptyButtonText}>Create First Encounter</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+    </ScrollView>
   );
 };
 
+function getDayPart(): string {
+  const hour = new Date().getHours();
+  if (hour < 12) return 'morning';
+  if (hour < 18) return 'afternoon';
+  return 'evening';
+}
+
 function getStatusColor(status: string): string {
   const statusColors: Record<string, string> = {
-    'planned': colors.info,
-    'arrived': colors.warning,
-    'triaged': colors.warning,
+    planned: colors.info,
+    arrived: colors.warning,
+    triaged: colors.warning,
     'in-progress': colors.primary,
     'on-scene': colors.primary,
     'in-transit': colors.secondary,
     'at-destination': colors.info,
-    'finished': colors.success,
-    'cancelled': colors.error,
+    finished: colors.success,
+    cancelled: colors.error,
     'entered-in-error': colors.error,
-    'unknown': colors.textTertiary,
+    unknown: colors.textTertiary,
   };
   return statusColors[status] || colors.textTertiary;
 }
 
 function getPriorityColor(priority: string): string {
   const priorityColors: Record<string, string> = {
-    'routine': colors.info,
-    'urgent': colors.warning,
-    'emergent': colors.error,
-    'critical': colors.error,
+    routine: colors.info,
+    urgent: colors.warning,
+    emergent: colors.error,
+    critical: colors.error,
   };
   return priorityColors[priority] || colors.textPrimary;
 }
@@ -239,179 +319,225 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.background,
   },
+  content: {
+    width: '100%',
+    maxWidth: layout.contentMaxWidth,
+    alignSelf: 'center',
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.xl,
+    paddingBottom: layout.tabBarHeight + spacing.xxl,
+  },
   header: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'flex-start',
-    padding: spacing.lg,
-    paddingTop: spacing.xl,
+    justifyContent: 'space-between',
+    marginBottom: spacing.xl,
   },
   headerLeft: {
     flex: 1,
+    paddingRight: spacing.md,
   },
   greeting: {
-    fontSize: typography.sizes.xl,
-    fontWeight: '600',
+    ...typography.styles.largeTitle,
     color: colors.textPrimary,
   },
   date: {
-    fontSize: typography.sizes.md,
+    ...typography.styles.subheadline,
     color: colors.textSecondary,
     marginTop: spacing.xs,
   },
-  headerRight: {
-    alignItems: 'flex-end',
-  },
-  statusBadge: {
+  connectionBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.xs,
+    minHeight: 32,
+    paddingHorizontal: spacing.sm + 2,
     borderRadius: borderRadius.full,
   },
-  statusDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    marginRight: spacing.xs,
+  connectionDot: {
+    width: 7,
+    height: 7,
+    borderRadius: borderRadius.full,
+    marginRight: spacing.sm,
   },
-  statusText: {
-    fontSize: typography.sizes.xs,
+  connectionText: {
+    ...typography.styles.caption,
     fontWeight: '600',
   },
   activeEncounterCard: {
-    margin: spacing.lg,
     padding: spacing.lg,
     backgroundColor: colors.surface,
     borderRadius: borderRadius.lg,
-    ...shadows.md,
-    borderLeftWidth: 4,
-    borderLeftColor: colors.primary,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.border,
+    ...shadows.sm,
   },
   activeEncounterHeader: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: spacing.md,
+    justifyContent: 'space-between',
+  },
+  activeLabelRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  liveDot: {
+    width: 8,
+    height: 8,
+    borderRadius: borderRadius.full,
+    backgroundColor: colors.success,
+    marginRight: spacing.sm,
   },
   activeEncounterLabel: {
-    fontSize: typography.sizes.xs,
+    ...typography.styles.footnote,
+    color: colors.textSecondary,
     fontWeight: '600',
-    color: colors.textTertiary,
-    letterSpacing: 0.5,
+  },
+  statusBadge: {
+    paddingHorizontal: spacing.sm + 2,
+    paddingVertical: spacing.xs,
+    borderRadius: borderRadius.full,
+  },
+  statusText: {
+    ...typography.styles.caption2,
+    fontWeight: '600',
+  },
+  activePatientName: {
+    ...typography.styles.title2,
+    color: colors.textPrimary,
+    marginTop: spacing.lg,
   },
   activeEncounterInfo: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: spacing.md,
-    paddingVertical: spacing.md,
-    borderTopWidth: 1,
-    borderBottomWidth: 1,
-    borderColor: colors.border,
+    alignItems: 'center',
+    marginTop: spacing.lg,
+    marginBottom: spacing.lg,
+    padding: spacing.md,
+    borderRadius: borderRadius.md,
+    backgroundColor: colors.background,
   },
-  infoRow: {
+  infoItem: {
+    flex: 1,
     alignItems: 'center',
   },
   infoLabel: {
-    fontSize: typography.sizes.xs,
-    color: colors.textTertiary,
-    marginBottom: 2,
+    ...typography.styles.caption2,
+    color: colors.textSecondary,
+    marginBottom: spacing.xs,
   },
   infoValue: {
-    fontSize: typography.sizes.md,
-    fontWeight: '600',
+    ...typography.styles.footnote,
     color: colors.textPrimary,
+    fontWeight: '600',
+  },
+  infoDivider: {
+    width: StyleSheet.hairlineWidth,
+    height: 32,
+    backgroundColor: colors.separator,
   },
   continueButton: {
+    minHeight: 48,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.sm,
     backgroundColor: colors.primary,
     borderRadius: borderRadius.md,
-    padding: spacing.md,
-    alignItems: 'center',
   },
   continueButtonText: {
-    color: colors.white,
-    fontSize: typography.sizes.md,
-    fontWeight: '600',
+    ...typography.styles.headline,
+    color: colors.textInverse,
+  },
+  pressed: {
+    opacity: 0.72,
+    transform: [{ scale: 0.99 }],
   },
   sectionHeader: {
     flexDirection: 'row',
+    alignItems: 'flex-end',
     justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: spacing.lg,
     marginTop: spacing.xl,
     marginBottom: spacing.md,
   },
-  sectionHeaderLeft: {
-    flex: 1,
-  },
   sectionTitle: {
-    fontSize: typography.sizes.lg,
-    fontWeight: '600',
+    ...typography.styles.title3,
     color: colors.textPrimary,
   },
+  sectionSubtitle: {
+    ...typography.styles.footnote,
+    color: colors.textTertiary,
+  },
   viewAllButton: {
-    padding: spacing.xs,
+    minHeight: 32,
+    justifyContent: 'center',
+    paddingHorizontal: spacing.xs,
   },
   viewAllText: {
-    fontSize: typography.sizes.md,
+    ...typography.styles.subheadline,
     color: colors.primary,
-    fontWeight: '500',
+    fontWeight: '600',
   },
   actionGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    paddingHorizontal: spacing.lg,
-    justifyContent: 'space-between',
-    marginBottom: spacing.lg,
+    gap: spacing.md,
   },
   actionCard: {
-    width: '48%',
-    aspectRatio: 1,
-    backgroundColor: colors.surface,
-    borderRadius: borderRadius.lg,
-    padding: spacing.lg,
-    alignItems: 'center',
-    justifyContent: 'center',
-    ...shadows.sm,
-    marginBottom: spacing.md,
-  },
-  actionIcon: {
-    width: 48,
-    height: 48,
-    borderRadius: borderRadius.md,
-    backgroundColor: colors.primaryLight,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: spacing.md,
-  },
-  actionIconText: {
-    fontSize: 24,
-  },
-  actionTitle: {
-    fontSize: typography.sizes.md,
-    fontWeight: '600',
-    color: colors.textPrimary,
-    textAlign: 'center',
-    marginBottom: spacing.xs,
-  },
-  actionSubtitle: {
-    fontSize: typography.sizes.xs,
-    color: colors.textTertiary,
-    textAlign: 'center',
-  },
-  encounterRow: {
+    flexGrow: 1,
+    flexBasis: 210,
+    minWidth: 210,
+    minHeight: 108,
     flexDirection: 'row',
     alignItems: 'center',
     padding: spacing.md,
     backgroundColor: colors.surface,
-    marginHorizontal: spacing.lg,
-    borderRadius: borderRadius.md,
+    borderRadius: borderRadius.lg,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.border,
     ...shadows.sm,
   },
+  actionIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: borderRadius.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.primaryLight,
+    marginRight: spacing.md,
+  },
+  actionCopy: {
+    flex: 1,
+  },
+  actionTitle: {
+    ...typography.styles.headline,
+    color: colors.textPrimary,
+  },
+  actionSubtitle: {
+    ...typography.styles.footnote,
+    color: colors.textSecondary,
+    marginTop: 2,
+  },
+  encounterList: {
+    overflow: 'hidden',
+    backgroundColor: colors.surface,
+    borderRadius: borderRadius.lg,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.border,
+  },
+  encounterRow: {
+    minHeight: 82,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.md,
+  },
+  encounterRowBorder: {
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.separator,
+  },
   encounterStatusIndicator: {
-    width: 4,
-    height: '100%',
-    borderRadius: 2,
+    width: 8,
+    height: 8,
+    borderRadius: borderRadius.full,
     marginRight: spacing.md,
   },
   encounterInfo: {
@@ -419,57 +545,65 @@ const styles = StyleSheet.create({
   },
   encounterRowTop: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
+    justifyContent: 'space-between',
     marginBottom: spacing.xs,
   },
   encounterType: {
-    fontSize: typography.sizes.sm,
+    ...typography.styles.caption,
+    color: colors.textTertiary,
     fontWeight: '600',
-    color: colors.textPrimary,
+    letterSpacing: 0.3,
   },
   encounterTime: {
-    fontSize: typography.sizes.xs,
-    fontWeight: '500',
-  },
-  encounterDetail: {
-    fontSize: typography.sizes.xs,
-    color: colors.textSecondary,
-    marginBottom: 1,
-  },
-  encounterStatusBadge: {
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xs,
-    borderRadius: borderRadius.full,
-    marginLeft: spacing.md,
-  },
-  encounterStatusText: {
-    fontSize: typography.sizes.xs,
+    ...typography.styles.caption2,
     fontWeight: '600',
   },
-  separator: {
-    height: 1,
-    backgroundColor: colors.border,
-    marginHorizontal: spacing.lg,
+  encounterPatient: {
+    ...typography.styles.headline,
+    color: colors.textPrimary,
+  },
+  encounterDetail: {
+    ...typography.styles.caption,
+    color: colors.textSecondary,
+    marginTop: 2,
   },
   emptyState: {
-    padding: spacing.xxl,
     alignItems: 'center',
+    paddingHorizontal: spacing.xl,
+    paddingVertical: spacing.xxl,
+    backgroundColor: colors.surface,
+    borderRadius: borderRadius.lg,
+  },
+  emptyIcon: {
+    width: 56,
+    height: 56,
+    borderRadius: borderRadius.lg,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.primaryLight,
+  },
+  emptyTitle: {
+    ...typography.styles.headline,
+    color: colors.textPrimary,
+    marginTop: spacing.md,
   },
   emptyText: {
-    fontSize: typography.sizes.md,
-    color: colors.textTertiary,
-    marginBottom: spacing.md,
+    ...typography.styles.subheadline,
+    color: colors.textSecondary,
+    marginTop: spacing.xs,
   },
   emptyButton: {
-    backgroundColor: colors.primary,
-    borderRadius: borderRadius.md,
+    minHeight: 44,
+    justifyContent: 'center',
     paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.md,
+    marginTop: spacing.md,
+    borderRadius: borderRadius.md,
+    backgroundColor: colors.primary,
   },
   emptyButtonText: {
-    color: colors.white,
-    fontSize: typography.sizes.md,
+    ...typography.styles.subheadline,
+    color: colors.textInverse,
     fontWeight: '600',
   },
 });

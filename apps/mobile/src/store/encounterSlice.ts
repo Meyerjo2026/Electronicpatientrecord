@@ -1,6 +1,8 @@
 import { createSlice, createAsyncThunk, PayloadAction } from '@reduxjs/toolkit';
-import { Encounter, EncounterCreate, EncounterSearchParams, EncounterStatus } from '@prehospital-epr/core';
+import { Encounter, EncounterCreate, EncounterSearchParams } from '@prehospital-epr/core';
 import { ulid } from 'ulid';
+
+type EncounterStatus = Encounter['status'];
 
 interface EncounterState {
   currentEncounter: Encounter | null;
@@ -51,7 +53,7 @@ export const updateEncounterStatus = createAsyncThunk(
   }
 );
 
-export const loadEncounter = createAsyncThunk(
+export const loadEncounter = createAsyncThunk<Encounter | null, string>(
   'encounter/load',
   async (encounterId: string, { rejectWithValue }) => {
     await new Promise(resolve => setTimeout(resolve, 100));
@@ -127,10 +129,11 @@ const encounterSlice = createSlice({
         state.error = action.payload as string || 'Failed to create encounter';
       })
       .addCase(updateEncounterStatus.fulfilled, (state, action) => {
-        const idx = state.encounters.findIndex(e => e.id === action.payload.id);
-        if (idx >= 0) state.encounters[idx] = action.payload;
-        if (state.currentEncounter?.id === action.payload.id) {
-          state.currentEncounter = action.payload;
+        const updatedEncounter = action.payload as Encounter;
+        const idx = state.encounters.findIndex(e => e.id === updatedEncounter.id);
+        if (idx >= 0) state.encounters[idx] = updatedEncounter;
+        if (state.currentEncounter?.id === updatedEncounter.id) {
+          state.currentEncounter = updatedEncounter;
         }
       })
       .addCase(loadEncounter.fulfilled, (state, action) => {
