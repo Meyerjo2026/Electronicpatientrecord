@@ -19,6 +19,7 @@ import { LoginScreen } from '../screens/LoginScreen';
 import { PatientReportScreen } from '../screens/PatientReportScreen';
 import { QualityIndicatorsScreen } from '../screens/QualityIndicatorsScreen';
 import { FormReadinessScreen } from '../screens/FormReadinessScreen';
+import { AdminSecurityGate } from '../screens/AdminSecurityScreen';
 
 export type MainStackParamList = {
   MainTabs: undefined;
@@ -30,6 +31,7 @@ export type MainStackParamList = {
   PatientReport: { encounterId: string };
   QualityIndicators: undefined;
   FormReadiness: undefined;
+  AdminSecurity: undefined;
 };
 
 export type TabParamList = {
@@ -155,6 +157,11 @@ const MainStack: React.FC = () => {
         name="FormReadiness"
         component={FormReadinessScreen}
         options={{ title: 'Form Readiness' }}
+      />
+      <Stack.Screen
+        name="AdminSecurity"
+        component={AdminSecurityGate}
+        options={{ title: 'Security posture' }}
       />
     </Stack.Navigator>
   );

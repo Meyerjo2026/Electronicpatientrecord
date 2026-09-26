@@ -89,7 +89,8 @@ export class RBACService {
         'REPORT_GENERATE',
         'ADMIN_USERS', 'ADMIN_SYSTEM',
         'PROTOCOL_MANAGE', 'DEVICE_MANAGE',
-        'DATA_EXPORT'
+        'DATA_EXPORT',
+        'AUDIT_READ'
       ],
       HOSPITAL_STAFF: [
         'PATIENT_READ',

@@ -5,6 +5,8 @@ import type {
   AuditEvent,
   AuditEventCreate,
 } from '@prehospital-epr/core';
+import type { AuditStore } from './audit-store';
+import { MemoryAuditStore, matchesAuditQuery, paginate, sortNewestFirst } from './audit-store';
 import {
   AuditEventActionSchema,
   AuditEventOutcomeSchema,
@@ -35,6 +37,22 @@ interface IntegrityRecord {
   eventId: string;
 }
 
+/**
+ * FHIR `AuditEvent.action` codes for a record access.
+ *
+ * Previously this was looked up as `AuditEventActionSchema.Enum[action.toUpperCase()]`,
+ * but the enum's values are the codes themselves (`C`/`R`/`U`/`D`/`E`), so the
+ * lookup was always `undefined` and every access event fell back to `R`. A
+ * delete was therefore indistinguishable from a read in the audit trail, which
+ * defeats access review.
+ */
+const ACCESS_ACTION_CODES = {
+  create: 'C',
+  read: 'R',
+  update: 'U',
+  delete: 'D',
+} as const;
+
 export class AuditService {
   private config: AuditConfig;
   private eventBuffer: AuditEvent[] = [];
@@ -43,8 +61,16 @@ export class AuditService {
   private eventIndex: number = 0;
   private lastHash: string = '0'.repeat(64); // Genesis hash
 
-  constructor(config: Partial<AuditConfig> = {}) {
+  private readonly store: AuditStore;
+
+  /**
+   * @param store Persistence for the audit trail. Defaults to process memory,
+   *   which keeps events queryable for the life of the app but does not survive
+   *   a restart. Pass a durable store to get a trail that does.
+   */
+  constructor(config: Partial<AuditConfig> = {}, store: AuditStore = new MemoryAuditStore()) {
     this.config = AuditConfigSchema.parse(config);
+    this.store = store;
   }
 
   private ensureFlushTimer(): void {
@@ -130,7 +156,7 @@ export class AuditService {
           display: action.charAt(0).toUpperCase() + action.slice(1),
         }],
       }],
-      action: AuditEventActionSchema.Enum[action.toUpperCase() as keyof typeof AuditEventActionSchema.Enum] || 'R',
+      action: AuditEventActionSchema.parse(ACCESS_ACTION_CODES[action]),
       outcome: outcome === 'success' ? '0' : '4',
       outcomeDesc: outcome === 'success' ? 'Success' : 'Access denied or error',
       agent: [{
@@ -260,7 +286,9 @@ export class AuditService {
           display: eventType,
         }],
       }],
-      action: eventType.includes('failed') ? 'E' : 'E',
+      // FHIR has no distinct 'failed' action; a failed attempt is still an
+      // executed authentication event, distinguished by `outcome`.
+      action: 'E',
       outcome: outcome === 'success' ? '0' : '4',
       outcomeDesc: `Security event: ${eventType} ${outcome}`,
       agent: [{
@@ -334,20 +362,13 @@ export class AuditService {
     this.eventBuffer = [];
 
     try {
-      // In production, would write to:
-      // - Secure append-only log file
-      // - Database with audit table
-      // - SIEM system (Splunk, Elastic, etc.)
-      // - CloudWatch/Stackdriver
-      
-      // For now, simulate persistence
       await this.persistEvents(eventsToFlush);
-      
+
       // Also persist integrity chain
       if (this.config.enableIntegrityChain) {
         await this.persistIntegrityChain();
       }
-      
+
       return eventsToFlush.length;
     } catch (error) {
       // On failure, put events back in buffer
@@ -356,15 +377,20 @@ export class AuditService {
     }
   }
 
+  /**
+   * Write a batch to the configured store.
+   *
+   * The store rejects duplicates by id, so a retry after a partial failure
+   * cannot double-write. Throwing here is deliberate: an audit trail that
+   * silently drops events is worse than a failed write the caller can surface.
+   */
   private async persistEvents(events: AuditEvent[]): Promise<void> {
-    // Implementation would depend on storage backend
-    // Example: await db.auditEvents.insertMany(events);
-    console.log(`[AUDIT] Persisted ${events.length} events`);
+    await this.store.append(events);
   }
 
   private async persistIntegrityChain(): Promise<void> {
-    // Persist integrity chain to tamper-evident storage
-    console.log(`[AUDIT] Integrity chain length: ${this.integrityChain.length}`);
+    // The chain itself is re-derived from stored events on startup, so there
+    // is nothing separate to persist.
   }
 
   // Verify integrity of audit log
@@ -418,6 +444,12 @@ export class AuditService {
   }
 
   // Query audit events
+  /**
+   * Query the audit trail.
+   *
+   * Reads the store and merges in anything still buffered, so a caller sees
+   * events that have been recorded but not yet flushed. Newest first.
+   */
   async queryEvents(filter: {
     userId?: string;
     resourceType?: string;
@@ -426,12 +458,72 @@ export class AuditService {
     startDate?: string;
     endDate?: string;
     outcome?: string;
+    eventType?: string;
+    eventSubtype?: string;
     limit?: number;
     offset?: number;
-  }): Promise<AuditEvent[]> {
-    // In production, would query database
-    // This is a mock implementation
-    return [];
+  } = {}): Promise<AuditEvent[]> {
+    const stored = await this.store.query(filter);
+    const buffered = this.eventBuffer.filter(event => matchesAuditQuery(event, filter));
+
+    // A buffered event is already in the store if a flush raced us; dedupe by id.
+    const seen = new Set(stored.map(event => event.id));
+    const pending = buffered.filter(event => !seen.has(event.id));
+    const merged = sortNewestFirst([...stored, ...pending]);
+
+    return paginate(merged, filter);
+  }
+
+  /** Number of stored and buffered events matching the filter. */
+  async countEvents(filter: Parameters<AuditService['queryEvents']>[0] = {}): Promise<number> {
+    const stored = await this.store.count(filter);
+    const pending = this.eventBuffer.filter(event => matchesAuditQuery(event, filter)).length;
+    return stored + pending;
+  }
+
+  /**
+   * Drop events older than the configured retention window.
+   *
+   * Retention is a confidentiality and privacy obligation (C1.2, P4.3), so
+   * this is exposed rather than left as a TODO: an audit trail nobody prunes is
+   * itself a finding.
+   */
+  async pruneExpired(reference?: Date): Promise<number> {
+    const now = reference ?? new Date();
+    const cutoff = new Date(now.getTime() - this.config.retentionDays * 86_400_000);
+    const removed = await this.store.prune(cutoff.toISOString());
+    this.eventBuffer = this.eventBuffer.filter(
+      event => Date.parse(event.recorded) >= cutoff.getTime()
+    );
+    return removed;
+  }
+
+  /**
+   * Rebuild the in-memory integrity chain from stored events.
+   *
+   * Called on startup so tampering with the stored log is detected across app
+   * restarts rather than only within a single process.
+   */
+  async rehydrateIntegrityChain(): Promise<{ valid: boolean; brokenAt?: number; details?: string }> {
+    const events = (await this.store.all()).sort((a, b) => a.recorded.localeCompare(b.recorded));
+    this.integrityChain = [];
+    this.eventIndex = 0;
+    this.lastHash = '0'.repeat(64);
+
+    for (const event of events) {
+      const record: IntegrityRecord = {
+        index: ++this.eventIndex,
+        previousHash: this.lastHash,
+        currentHash: '',
+        timestamp: event.recorded,
+        eventId: event.id,
+      };
+      record.currentHash = this.computeChainHash(record);
+      this.integrityChain.push(record);
+      this.lastHash = record.currentHash;
+    }
+
+    return this.verifyIntegrity();
   }
 
   // Generate audit report

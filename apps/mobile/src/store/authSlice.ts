@@ -36,6 +36,7 @@ const DEMO_PERMISSIONS: Session['permissions'] = [
   'DOCUMENT_SIGN',
   'HANDOFF_CREATE',
   'REPORT_GENERATE',
+  'AUDIT_READ',
 ];
 
 const buildSession = (): Session => ({

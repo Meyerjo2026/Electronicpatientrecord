@@ -37,6 +37,7 @@ export const SettingsScreen: React.FC = () => {
   const navigation = useNavigation<Nav>();
 
   const session = useSelector((state: RootState) => state.auth.session);
+  const canReadAudit = session?.permissions?.includes('AUDIT_READ') ?? false;
   const biometricEnabled = useSelector((state: RootState) => state.auth.biometricEnabled);
   const pinEnabled = useSelector((state: RootState) => state.auth.pinEnabled);
   const preference = useSelector((state: RootState) => state.ui.theme);
@@ -195,6 +196,21 @@ export const SettingsScreen: React.FC = () => {
           />
         </Card>
       </Section>
+
+      {canReadAudit ? (
+        <Section title="Administration">
+          <Card padded={false}>
+            <ListRow
+              title="Security posture"
+              subtitle="SOC 2 control status from this device's audit trail"
+              icon="shield-checkmark-outline"
+              iconTone="primary"
+              chevron
+              onPress={() => navigation.navigate('AdminSecurity')}
+            />
+          </Card>
+        </Section>
+      ) : null}
 
       <Section title="About">
         <Card padded={false}>

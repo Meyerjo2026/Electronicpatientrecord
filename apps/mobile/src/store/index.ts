@@ -8,6 +8,8 @@ import observationReducer from './observationSlice';
 import interventionReducer from './interventionSlice';
 import syncReducer from './syncSlice';
 import uiReducer from './uiSlice';
+import { createAuditMiddleware } from './auditMiddleware';
+import { audit } from '../security/audit';
 
 const rootReducer = combineReducers({
   auth: authReducer,
@@ -38,7 +40,7 @@ export const store = configureStore({
       serializableCheck: {
         ignoredActions: ['persist/PERSIST', 'persist/REHYDRATE'],
       },
-    }),
+    }).concat(createAuditMiddleware(audit)),
   devTools: __DEV__,
 });
 
